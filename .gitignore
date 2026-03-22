@@ -1,0 +1,144 @@
+# --- OS junk ---
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+Desktop.ini
+$RECYCLE.BIN/
+ehthumbs.db
+ehthumbs_vista.db
+
+# --- Python bytecode / build ---
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+*.pyd
+*.dll
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask / general instance
+instance/
+.webassets-cache
+
+# Scrapy
+.scrapy
+
+# Sphinx docs
+docs/_build/
+
+# Jupyter
+.ipynb_checkpoints
+*.nbconvert.ipynb
+
+# PyBuilder
+target/
+
+# mypy / type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# pyenv / virtualenv
+.python-version
+venv/
+ENV/
+env/
+env.bak/
+venv.bak/
+.venv/
+
+# Poetry
+.poetry/
+
+# pipenv
+# Pipfile.lock  # uncomment to ignore lockfile
+
+# IDE / editor junk
+.vscode/
+.idea/
+*.iml
+*.sublime-project
+*.sublime-workspace
+
+# OS/editor backups
+*~
+*.swp
+*.swo
+*.tmp
+*.bak
+
+# Logs
+logs/
+*.log
+
+# dotenv / secrets
+.env
+.env.*
+*.env
+
+# setup
+config.yaml
