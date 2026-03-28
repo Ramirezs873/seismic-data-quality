@@ -142,3 +142,7 @@ logs/
 
 # setup
 config.yaml
+
+# Seismic
+*.mseed
+*.xml
