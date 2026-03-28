@@ -16,7 +16,9 @@ import csv
 def event_catalogue(client, 
                  network, 
                  station, 
-                 min_mag = 6,  
+                 min_mag = 6,
+                 max_depth = 100,
+                 title = 'CWA',  
                  user=None, 
                  password=None, 
                  config=None,
@@ -38,12 +40,14 @@ def event_catalogue(client,
         Station code for group 1. e.g 'CASY', 'CWA90'. 
     min_mag (float):
         Minimum magnitude to search for events.
+    max_depth (float):
+        Maximum depth (km) to search for events.
     user (str):
         Username to access the client.
     password (str):
         Password to acces the client.
-    config (bool):
-        True/False. If config file is setup then select 'True'.
+    config (yaml):
+        (Optional) Configuration yaml file. 
     csv (bool):
         True/False. True to write station info and event catalogue to a csv file.
 
@@ -56,8 +60,6 @@ def event_catalogue(client,
     # Config Support
     base_path = Path(config["seismic_data_path"]) if config else Path(".")
     base_path.mkdir(parents=True, exist_ok=True)
-
-    title = f'{network}_{station}'
     
     filename = f"station_data_{title}.xml"
     file_path = base_path / filename
@@ -102,7 +104,9 @@ def event_catalogue(client,
         maxradius= 80, # degrees
         starttime=info["t_start"],
         endtime=info["t_end"],
-        minmagnitude=min_mag)
+        minmagnitude=min_mag,
+        maxdepth= max_depth # km
+        )
 
         event_dict[station] = events
 
@@ -138,7 +142,7 @@ def event_catalogue(client,
             print("Writing CSV File")
 
             df = pd.DataFrame(stat_event_csv)
-            df.to_csv(csv_filename, index=False)
+            df.to_csv(csv_file_path, index=False)
 
             print(f"Saved to: {csv_file_path}")
 
