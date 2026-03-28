@@ -52,8 +52,9 @@ def event_catalogue(client,
         True/False. True to write station info and event catalogue to a csv file.
 
     Returns:
-    coord_dict (dict):
-        Dictionary containing station coordinate data.
+    data (list of dict):
+        A dictionary containing station coordinate data and a dictionary containing event information.
+        
     """
     
     # Check if file already exists
