@@ -11,6 +11,8 @@ from obspy import read_inventory
 from collections import defaultdict
 import obspy
 import csv
+from obspy.clients.fdsn.header import FDSNNoDataException
+
 
 
 def event_catalogue(client, 
@@ -99,15 +101,19 @@ def event_catalogue(client,
     stat_event_csv = []    
     
     for station, info in coord_dict.items():
-        events = g1.get_events(
-        latitude=info["latitude"],
-        longitude=info["longitude"],
-        maxradius= 80, # degrees
-        starttime=info["t_start"],
-        endtime=info["t_end"],
-        minmagnitude=min_mag,
-        maxdepth= max_depth # km
-        )
+        try:
+            events = g1.get_events(
+            latitude=info["latitude"],
+            longitude=info["longitude"],
+            maxradius= 80, # degrees
+            starttime=info["t_start"],
+            endtime=info["t_end"],
+            minmagnitude=min_mag,
+            maxdepth= max_depth # km
+            )
+        except FDSNNoDataException:
+            print(f"No events found for {station} with min_mag={min_mag} and max_depth={max_depth}.")
+            events = []
 
         event_dict[station] = events
 
