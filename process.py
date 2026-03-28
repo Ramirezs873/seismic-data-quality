@@ -18,6 +18,7 @@ from obspy.clients.fdsn.header import FDSNNoDataException
 def event_catalogue(client, 
                  network, 
                  station, 
+                 radius = 85,
                  min_mag = 6,
                  max_depth = 100,
                  title = 'CWA',  
@@ -105,7 +106,7 @@ def event_catalogue(client,
             events = g1.get_events(
             latitude=info["latitude"],
             longitude=info["longitude"],
-            maxradius= 80, # degrees
+            maxradius= radius, # degrees
             starttime=info["t_start"],
             endtime=info["t_end"],
             minmagnitude=min_mag,
