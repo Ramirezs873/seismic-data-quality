@@ -10,21 +10,23 @@ from obspy.clients.fdsn import Client
 from obspy import read_inventory
 from collections import defaultdict
 import obspy
+import csv
 
 
-def station_info_events(client, 
+def event_catalogue(client, 
                  network, 
                  station, 
                  min_mag = 6,  
                  user=None, 
                  password=None, 
-                 config=None):
+                 config=None,
+                 csv = True):
 
     """
-    Gather seismic station coordinated from FDSN clients,
-    or from local files if they already exist, 
-    from one specified group of stations
-    and stores it as a dictionary.
+    Gather seismic station coordinates and relevant event information
+    from FDSN clients, or from local files if they already exist, 
+    from a specified group of stations and stores it as a dictionary.
+    The data can also be saved as a csv file.
 
     Parameters:
     ----------
@@ -40,6 +42,10 @@ def station_info_events(client,
         Username to access the client.
     password (str):
         Password to acces the client.
+    config (bool):
+        True/False. If config file is setup then select 'True'.
+    csv (bool):
+        True/False. True to write station info and event catalogue to a csv file.
 
     Returns:
     coord_dict (dict):
@@ -86,20 +92,57 @@ def station_info_events(client,
                                 "t_start": sta.start_date,
                                 "t_end": sta.end_date if sta.end_date else "active"}
     
-    event_dict = defaultdict(list)    
+    event_dict = defaultdict(list)
+    stat_event_csv = []    
     
     for station, info in coord_dict.items():
         events = g1.get_events(
         latitude=info["latitude"],
         longitude=info["longitude"],
-        maxradius= 8890, # 80 degrees approx. 
+        maxradius= 80, # degrees
         starttime=info["t_start"],
         endtime=info["t_end"],
         minmagnitude=min_mag)
 
         event_dict[station] = events
 
-    return coord_dict, event_dict
+        # loop through events
+        for event in event_dict[station]:
+            # get origin info (if exists)
+            origin = event.preferred_origin() or event.origins[0]
+            magnitude = event.preferred_magnitude() or event.magnitudes[0]
+            
+            stat_event_csv.append({
+                "station": station,
+                "station_latitude": info["latitude"],
+                "station_longitude": info["longitude"],
+                "station_t_start": info["t_start"],
+                "station_t_end": info["t_end"],
+                "event_t": origin.time,
+                "event_latitude": origin.latitude,
+                "event_longitude": origin.longitude,
+                "event_depth_km": origin.depth / 1000 if origin.depth else None,
+                "event_magnitude": magnitude.mag if magnitude else None
+            })
+
+    data = [coord_dict, event_dict]
+
+    if csv == True:
+        csv_filename = f"station_data_{title}.csv"
+        csv_file_path = base_path / csv_filename
+
+        if csv_file_path.exists():
+            print(f"File already exists: {csv_file_path}")
+            
+        else:
+            print("Writing CSV File")
+
+            df = pd.DataFrame(stat_event_csv)
+            df.to_csv(csv_filename, index=False)
+
+            print(f"Saved to: {csv_file_path}")
+
+    return data
 
 def preprocess(wave_dict,
                sensitivity = 2.994697576134245E8):
