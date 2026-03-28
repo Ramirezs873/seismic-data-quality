@@ -12,10 +12,10 @@ from collections import defaultdict
 import obspy
 
 
-
-def station_coords(client, 
+def station_info_events(client, 
                  network, 
-                 station,   
+                 station, 
+                 min_mag = 6,  
                  user=None, 
                  password=None, 
                  config=None):
@@ -34,6 +34,8 @@ def station_coords(client,
         Network code for group 1. e.g 'IU', 'AU'.
     station (str): 
         Station code for group 1. e.g 'CASY', 'CWA90'. 
+    min_mag (float):
+        Minimum magnitude to search for events.
     user (str):
         Username to access the client.
     password (str):
@@ -54,6 +56,10 @@ def station_coords(client,
     filename = f"station_data_{title}.xml"
     file_path = base_path / filename
 
+    # Gather data from target stations
+    g1 = Client(base_url=client, 
+                user=user, 
+                password=password) # FDSN client 
 
     if file_path.exists():
         print(f"Reading existing file: {file_path}")
@@ -61,11 +67,6 @@ def station_coords(client,
 
     else:
         print("File not found. Downloading data")
-
-        # Gather data from target stations
-        g1 = Client(base_url=client, 
-                    user=user, 
-                    password=password) # FDSN client 
 
         station_data = g1.get_stations(network=network, 
                                         station=station) # Gather station data
@@ -79,10 +80,26 @@ def station_coords(client,
     for net in station_data:
         for sta in net:
             key = f"{net.code}.{sta.code}"
-            coord_dict[key] = {"latitude": sta.latitude, 
-                                "longitude": sta.longitude}
 
-    return coord_dict   
+            coord_dict[key] = {"latitude": sta.latitude, 
+                                "longitude": sta.longitude,
+                                "t_start": sta.start_date,
+                                "t_end": sta.end_date if sta.end_date else "active"}
+    
+    event_dict = defaultdict(list)    
+    
+    for station, info in coord_dict.items():
+        events = g1.get_events(
+        latitude=info["latitude"],
+        longitude=info["longitude"],
+        maxradius= 8890, # 80 degrees approx. 
+        starttime=info["t_start"],
+        endtime=info["t_end"],
+        minmagnitude=min_mag)
+
+        event_dict[station] = events
+
+    return coord_dict, event_dict
 
 def preprocess(wave_dict,
                sensitivity = 2.994697576134245E8):
