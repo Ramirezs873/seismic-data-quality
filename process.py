@@ -177,28 +177,28 @@ def preprocess(wave_dict,
     """
 
     # Storage
-    preprocessed_dict = {'EW': [], 'NS': []}
+    preprocessed_dict = []
 
+    for i, wave in enumerate(wave_dict):
+        for station, (EW, NS, fs, t_start) in wave.items():
+            # Mean removal
+            NS_mr = NS - np.mean(NS)
+            EW_mr = EW - np.mean(EW)
+            # Detrend
+            NS = signal.detrend(NS_mr)
+            EW = signal.detrend(EW_mr)
+            # Convert to m/s
+            NS_v = NS / sensitivity
+            EW_v = EW / sensitivity
+            # Store Values
+            preprocessed_dict.append({station: (EW_v, NS_v, fs, t_start)})
+    
+    return preprocessed_dict
+        
+def amplitudes(wave_dict):
 
     for i in range(len(wave_dict)):
         # Define components
         NS = wave_dict[i]['Z9.CWA84.'][1].data
         EW = wave_dict[i]['Z9.CWA84.'][0].data
-        # Mean removal
-        NS_mr = NS - np.mean(NS)
-        EW_mr = EW - np.mean(EW)
-        # Detrend
-        NS = signal.detrend(NS_mr)
-        EW = signal.detrend(EW_mr)
-        # Convert to m/s
-        NS_v = NS / sensitivity
-        EW_v = EW / sensitivity
-        # Store Values
-        preprocessed_dict['EW'].append(EW_v)
-        preprocessed_dict['NS'].append(NS_v)
-
-    
-    return preprocessed_dict
-        
-
     
