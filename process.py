@@ -156,30 +156,33 @@ def event_catalogue(client,
 
     return data
 
-def preprocess(wave_dict,
+def preprocess(wave_list_dict,
                sensitivity = 2.994697576134245E8):
     """
     Applies a mean removal and detrending 
-    to a wave dictionary with isolate NS and EW components
+    to a list of wave dictionaries with isolate NS and EW components
     then deconvolves the instrument sensitivity
     into velocity values (m/s).
 
     Parameters:
-        wave_dict (dict):
+        wave_dict (list):
+            List of dictionaries containing seismic waveform data 
+            in the form (EW_data, NS_data).
             Dictionary containing seismic waveform data 
             in the form (EW_data, NS_data).
         sensitivity (float):
             Seismic instrument sensitivity.
 
     Returns:
-        preprocessed_dict (dict):
-            Corrected EW and NS components.
+        preprocessed_dict (list):
+            List of dictionaries containing preprocessed seismic waveform data 
+            in the form (EW_data, NS_data).
     """
 
     # Storage
     preprocessed_dict = []
 
-    for i, wave in enumerate(wave_dict):
+    for i, wave in enumerate(wave_list_dict):
         for station, (EW, NS, fs, t_start) in wave.items():
             # Mean removal
             NS_mr = NS - np.mean(NS)
@@ -195,10 +198,47 @@ def preprocess(wave_dict,
     
     return preprocessed_dict
         
-def amplitudes(wave_dict):
+def amplitudes(wave_list_dict):
+    """
+    Calculates the maximum, mean and median amplitudes 
+    of the NS and EW seismic components from a list of wave dictionaries.
+    Parameters:
+        wave_list_dict (list):
+            List of dictionaries containing seismic waveform data 
+            in the form (EW_data, NS_data).
+            Dictionary containing seismic waveform data 
+            in the form (EW_data, NS_data).
+    """
 
-    for i in range(len(wave_dict)):
-        # Define components
-        NS = wave_dict[i]['Z9.CWA84.'][1].data
-        EW = wave_dict[i]['Z9.CWA84.'][0].data
+    #Storage
+    amplitudes = []
+
+    for i, wave in enumerate(wave_list_dict):
+        for station, (EW, NS, fs, t_start) in wave.items():
+            # Max amplitude
+            NS_amp = np.max(np.abs(NS)) 
+            EW_amp = np.max(np.abs(EW))
+            # Mean amplitude
+            NS_mean_amp = np.mean(np.abs(NS))
+            EW_mean_amp = np.mean(np.abs(EW))
+            # Median amplitude
+            NS_median_amp = np.median(np.abs(NS))
+            EW_median_amp = np.median(np.abs(EW))
+            # Store Values
+            amplitudes.append({"station": station,
+                          "NS_max_amp": NS_amp,
+                          "EW_max_amp": EW_amp,
+                          "NS_mean_amp": NS_mean_amp,
+                          "EW_mean_amp": EW_mean_amp,
+                          "NS_median_amp": NS_median_amp,
+                          "EW_median_amp": EW_median_amp})
+            
+            print(f"Amplitudes for {station}: {amplitudes}")
+            
+    return amplitudes
+            
+
+
+
+
     
