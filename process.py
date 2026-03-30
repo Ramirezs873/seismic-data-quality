@@ -236,6 +236,84 @@ def amplitudes(wave_list_dict):
             print(f"Amplitudes for {station}: {amplitudes}")
             
     return amplitudes
+
+def find_channel(stream, options):
+    """
+    Find appropriate NS and EW Channels from a chosen stream. 
+    Code from align.py.
+    
+    Parameters:
+    stream (obspy.core.stream.Stream):
+        An ObsPy stream object.
+    options (list of str):
+        A list of channel codes.
+    """
+    # Loop through streams and find the first associated channel code
+    for ch in options:
+        tr = stream.select(channel=ch)
+        if len(tr) > 0:
+            return tr[0] # Return first channel code
+        
+    # If none are found
+    return None 
+
+def noise_to_signal(wave_dict, filtered_dict, Z_channel, NS_channel, EW_channel):
+
+    wave_data = {}
+
+    for station, stream in wave_dict.items():
+            
+            
+            print(f"Processing {station}...")
+            st = Stream(stream)
+            st.sort(['channel'])
+            Z = find_channel(st, Z_channel) # Try to find Z channel from function input
+            NS = find_channel(st, NS_channel) # Try to find NS channel from function input
+            EW = find_channel(st, EW_channel) # Try to find EW channel from function input
+            if Z is None or NS is None or EW is None:
+                print(f"Warning: Missing channel for {station}. Skipping.")
+                continue
+            wave_data[station] = {
+                "Z": Z.data,
+                "NS": NS.data,
+                "EW": EW.data}
+    
+    filt_data = {}
+
+    for station, stream in filtered_dict.items():
+            print(f"Processing {station}...")
+            st = Stream(stream)
+            st.sort(['channel'])
+            Z = find_channel(st, Z_channel) # Try to find Z channel from function input
+            NS = find_channel(st, NS_channel) # Try to find NS channel from function input
+            EW = find_channel(st, EW_channel) # Try to find EW channel from function input
+            if Z is None or NS is None or EW is None:
+                print(f"Warning: Missing channel for {station}. Skipping.")
+                continue
+            filt_data[station] = {
+                "Z": Z.data,
+                "NS": NS.data,
+                "EW": EW.data}
+    
+    ratio_dict = {}
+
+    for station, stream in filtered_dict.items():
+        noise = wave_data[station]["Z"] - filt_data[station]["Z"]
+        signal_P = np.mean(filt_data[station]["Z"] ** 2)
+        noise_P = np.mean(noise ** 2)
+        ratio_Z = 10 * np.log10(signal_P / noise_P)
+        noise = wave_data[station]["NS"] - filt_data[station]["NS"]
+        signal_P = np.mean(filt_data[station]["NS"] ** 2)
+        noise_P = np.mean(noise ** 2)
+        ratio_NS = 10 * np.log10(signal_P / noise_P)
+        noise = wave_data[station]["EW"] - filt_data[station]["EW"]
+        signal_P = np.mean(filt_data[station]["EW"] ** 2)
+        noise_P = np.mean(noise ** 2)
+        ratio_EW = 10 * np.log10(signal_P / noise_P)
+        ratio_dict[station] = {"Z": ratio_Z, "NS": ratio_NS, "EW": ratio_EW}
+
+    return ratio_dict
+
             
 
 
