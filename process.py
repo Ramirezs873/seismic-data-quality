@@ -257,13 +257,33 @@ def find_channel(stream, options):
     # If none are found
     return None 
 
-def noise_to_signal(wave_dict, filtered_dict, Z_channel, NS_channel, EW_channel):
-
+def noise_to_signal(wave_dict, 
+                    filtered_dict, 
+                    Z_channel, 
+                    NS_channel, 
+                    EW_channel):
+    """
+    Calculates the noise to signal ratio for the 
+    Z, NS and EW components of seismic data and 
+    stores the results as a dictionary.
+    Parameters:
+    wave_dict (dict):
+        A wave dictionary containing seismic waveform data.
+    filtered_dict (dict):
+        A dictionary containing filtered seismic waveform data.
+    Z_channel (list of str):
+        List of channel codes for the Z component.
+    NS_channel (list of str):
+        List of channel codes for the NS component.
+    EW_channel (list of str):
+        List of channel codes for the EW component.
+    """
+    
+    # Set up seismic waveform data
+    # Setup Storage
     wave_data = {}
-
+    # Loop through wave_dict, find the channels, and store the data in a new dictionary
     for station, stream in wave_dict.items():
-            
-            
             print(f"Processing {station}...")
             st = Stream(stream)
             st.sort(['channel'])
@@ -277,9 +297,11 @@ def noise_to_signal(wave_dict, filtered_dict, Z_channel, NS_channel, EW_channel)
                 "Z": Z.data,
                 "NS": NS.data,
                 "EW": EW.data}
-    
+            
+    # Set up filtered seismic waveform data
+    # Setup Storage
     filt_data = {}
-
+    # Loop through filtered_dict, find the channels, and store the data in a new dictionary
     for station, stream in filtered_dict.items():
             print(f"Processing {station}...")
             st = Stream(stream)
@@ -295,22 +317,28 @@ def noise_to_signal(wave_dict, filtered_dict, Z_channel, NS_channel, EW_channel)
                 "NS": NS.data,
                 "EW": EW.data}
     
+    # Calculate noise to signal ratio for each station and component, and store in a new dictionary
+    # Setup storage
     ratio_dict = {}
 
     for station, stream in filtered_dict.items():
-        noise = wave_data[station]["Z"] - filt_data[station]["Z"]
-        signal_P = np.mean(filt_data[station]["Z"] ** 2)
-        noise_P = np.mean(noise ** 2)
-        ratio_Z = 10 * np.log10(signal_P / noise_P)
-        noise = wave_data[station]["NS"] - filt_data[station]["NS"]
-        signal_P = np.mean(filt_data[station]["NS"] ** 2)
-        noise_P = np.mean(noise ** 2)
-        ratio_NS = 10 * np.log10(signal_P / noise_P)
-        noise = wave_data[station]["EW"] - filt_data[station]["EW"]
-        signal_P = np.mean(filt_data[station]["EW"] ** 2)
-        noise_P = np.mean(noise ** 2)
-        ratio_EW = 10 * np.log10(signal_P / noise_P)
-        ratio_dict[station] = {"Z": ratio_Z, "NS": ratio_NS, "EW": ratio_EW}
+        # Z component
+        noise_Z = wave_data[station]["Z"] - filt_data[station]["Z"]
+        signal_P_Z = np.mean(filt_data[station]["Z"] ** 2)
+        noise_P_Z = np.mean(noise_Z ** 2)
+        ratio_Z = 10 * np.log10(signal_P_Z / noise_P_Z)
+        # NS component
+        noise_NS = wave_data[station]["NS"] - filt_data[station]["NS"]
+        signal_P_NS = np.mean(filt_data[station]["NS"] ** 2)
+        noise_P_NS = np.mean(noise_NS ** 2)
+        ratio_NS = 10 * np.log10(signal_P_NS / noise_P_NS)
+        # EW component
+        noise_EW = wave_data[station]["EW"] - filt_data[station]["EW"]
+        signal_P_EW = np.mean(filt_data[station]["EW"] ** 2)
+        noise_P_EW = np.mean(noise_EW ** 2)
+        ratio_EW = 10 * np.log10(signal_P_EW / noise_P_EW)
+        # Store the ratios in a new dictionary
+        ratio_dict[station] = {"Z": float(ratio_Z), "NS": float(ratio_NS), "EW": float(ratio_EW)}
 
     return ratio_dict
 
