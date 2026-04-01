@@ -404,7 +404,235 @@ def signal_to_noise(wave_dict,
 
     return ratio_dict
 
+def cc_correction(ref_dict, 
+                  target_dict, 
+                  col_n=4,
+                  underlying_plot='reference', 
+                  png_title = 'default', 
+                  save_png=True):
+    """
+    Create polar plots with cross-correlation correction to a reference station from seismic waveform data stored in a dictionary.
+    Adapted for use with prepocess() from align.py.
+    Parameters:
+    ref_dict (dict):
+        Dictionary containing seismic waveform data for a reference station.
+    target_dict (dict):
+        Dictionary containing seismic waveform data for target stations.
+    col_n (int):
+        Number of columns in the plot grid.
+    underlying_plot (str):
+        Choose what is plotted with the aligned target station signals.
+        'reference' for reference station
+        'original' for original target station signal
+        Any other input skips the underlying plot.
+    png_title (str):
+        Title for the saved PNG file. If 'default', the file is named 'cross_correlation.png'.
+    save_png (bool):
+        True/False. If True, save each plot as a PNG file.
+    """
+    # Calculate number of rows needed for figure. Set number of columns in function call
+    n_plots = len(target_dict) + 1
+    row_n = int(np.ceil(n_plots / col_n)) 
+
+    # Prepare Figure
+    fig = plt.figure(figsize=(6*col_n, 6*row_n))
+
+    # Setup reference station for first subplot
+    ref_station = list(ref_dict.keys())[0]
+
+    ref_NS = ref_dict[ref_station][1] 
+    ref_EW = ref_dict[ref_station][0]
+
+    if ref_NS is None or ref_EW is None:
+        raise ValueError("Reference station missing required NS/EW channels")
+        
+    print(f"Processing reference station: {ref_station}...")
+
+    # Ensure x and y data is of same length
+    n_ref = min(len(ref_NS.data), len(ref_EW.data))
+    y_ref = np.asarray(ref_NS)[:n_ref]
+    x_ref = np.asarray(ref_EW)[:n_ref]
+
+    # Apply peak normalization
+    scale_ref = np.max(np.sqrt(x_ref**2 + y_ref**2))
+    if scale_ref == 0:
+        print(f"{ref_station}: zero amplitude signal.")
+        
+    ref_EW_norm = x_ref / scale_ref
+    ref_NS_norm = y_ref / scale_ref
+
+    # Gather polar coordinates 
+    theta_ref = np.arctan2(ref_NS_norm,ref_EW_norm)
+    r_ref = np.sqrt(ref_NS_norm**2 + ref_EW_norm**2)
+
+    # Plot reference station
+    ax = fig.add_subplot(row_n, col_n, 1, projection="polar")
+    ax.plot(theta_ref,
+            r_ref, 
+            alpha=0.65, 
+            color = 'red',
+            label=f"Reference Station: {ref_station}")
+    
+    # Legend
+    ax.legend(loc="upper right", 
+              bbox_to_anchor=(1.3, 1.1), 
+              fontsize=8,
+              frameon=True)
+    
+    # Cardinal directions
+    ax.set_rmax(1.2)
+    cardinals = {
+                "E": (0, 1.05 * 1.05),
+                "N": (np.pi / 2, 1.05),
+                "W": (np.pi, 1.05 * 1.05),
+                "S": (3 * np.pi / 2, 1.05)}
+
+    offset = 0.385 
+    
+    for label, (angle, radius) in cardinals.items():
+        ax.text(angle,
+                radius + offset,
+                label,
+                ha="center",
+                va="center",
+                fontsize=12,
+                fontweight="bold",
+                clip_on=False)
+
+    time = ref_dict[ref_station][3]
+    timespan = len(ref_NS.data) / ref_dict[ref_station][2]
+
+    ax.set_title(f"Horizontal Particle Motion Plot \n for {ref_station} at {time} for {timespan} seconds", y=1.15)    
+
+    # Loop through stations, cross correlate, and plot
+    for i, (station, stream) in enumerate(target_dict.items(), start=2):
+            print(f"Processing {station}...")
             
+            target_NS = target_dict[station][1] 
+            target_EW = target_dict[station][0]
+
+            if target_NS is None or target_EW is None:
+                print(f"{station}: missing required channels, skipping.")
+                continue
+            
+            # Match channel lengths
+            n = min(len(ref_NS.data), len(ref_EW.data), len(target_NS.data), len(target_EW.data))
+            y1 = np.asarray(ref_NS)[:n]
+            x1 = np.asarray(ref_EW)[:n]
+            y2 = np.asarray(target_NS)[:n]
+            x2 = np.asarray(target_EW)[:n]
+
+            # Apply peak normalization
+            scale1 = np.max(np.sqrt((x1**2) + (y1**2)))
+            x1 = x1 / scale1
+            y1 = y1 / scale1
+
+            scale2 = np.max(np.sqrt((x2**2) + (y2**2)))
+            x2 = x2 / scale2
+            y2 = y2 / scale2
+        
+            # Investigate cross correlation
+            # Method from Misalignment Angle Correction of Borehole 
+            # Seismic Sensors: The Case Study of
+            # the Collalto Seismic Network
+            # Diez Zaldívar
+            # 2016
+            # For full derivation, see the paper above. Only vital steps are conducted here.
+            
+            S_r = x1 +1j*y1 # Reference waveform
+            S_k = x2 +1j*y2 # Target waveform
+
+            # m = (G^H G)^-1 G^H d)
+            # G = S_k, H is conjugate transpose matrix, d = S_r
+            # => m_k = (S_k^H * S_k)^-1 *S_k^H * S_r
+            # => m_k = sum(|S_k|^2)^-1 * sum(conj(S_k) *S_r)
+            m_k = np.sum(np.conj(S_k)* S_r)/np.sum(np.abs(S_k)**2)
+            phi = np.arctan2(np.imag(m_k), np.real(m_k)) # angle between the target and reference waveform
+
+            # Rotate entire signal
+            S_k_aligned = S_k * np.exp(1j *phi)
+            x2_aligned =  np.real(S_k_aligned) # EW componet
+            y2_aligned = np.imag(S_k_aligned) # NS component
+
+            # Gather polar coordinates
+            theta_aligned = np.arctan2(y2_aligned, x2_aligned)
+            r_aligned = np.sqrt(x2_aligned**2 + y2_aligned**2)
+
+            # Compute rotation angle
+            angle_diff = np.rad2deg(phi)
+            if angle_diff > 180:
+                angle_diff = angle_diff - 360
+
+            print(f"Rotation required for best correlation at {station}: {angle_diff:.2f}°")
+            
+
+            # Create polar plot
+            ax = fig.add_subplot(row_n, col_n, i, projection="polar")
+            if underlying_plot == 'reference':
+                ax.plot(theta_ref,
+                        r_ref, 
+                        alpha=0.50, 
+                        color = 'red',
+                        label=f"Reference Station: {ref_station}")
+            elif underlying_plot == 'original':
+                theta_original = np.arctan2(y2,x2)
+                r_original = np.sqrt(x2**2 + y2**2)
+                ax.plot(theta_original, 
+                        r_original, 
+                        alpha=0.30, 
+                        color = 'darkmagenta',
+                        label="Uncorrected Target Station")
+            ax.set_rlabel_position(5)
+
+            ax.plot(theta_aligned, 
+                    r_aligned, 
+                    alpha=0.65, 
+                    color = 'darkmagenta',
+                    label="Corrected Target Station")
+                
+            # Legend
+            ax.legend(
+            loc="upper right",
+            bbox_to_anchor=(1.3, 1.1),
+            fontsize=8,
+            frameon=True)
+
+            # Add cardinal direction annotations
+            ax.set_rmax(1.2)
+            cardinals = {
+                "E": (0, 1.05 * 1.05),
+                "N": (np.pi / 2, 1.05),
+                "W": (np.pi, 1.05 * 1.05),
+                "S": (3 * np.pi / 2, 1.05)}
+
+            offset = 0.385  # Offset for cardinal labels
+
+            for label, (angle, radius) in cardinals.items():
+                ax.text(
+                    angle,
+                    radius + offset,
+                    label,
+                    ha="center",
+                    va="center",
+                    fontsize=12,
+                    fontweight="bold",
+                    clip_on=False)
+                
+            # For title
+            time = target_dict[station][3]
+            timespan = len(target_NS.data) / target_dict[station][2]
+            
+            ax.set_title(f"Horizontal Particle Motion Plot \n for {station} at {time} for {timespan} seconds", y=1.15)    
+
+    #Display
+    plt.tight_layout()
+    if save_png == True:
+        if png_title == 'default':
+            plt.savefig(f'cross_correlation.png', dpi=300)
+        else:
+            plt.savefig(f'{png_title}.png', dpi=300)
+
+    plt.show()       
 
 
 
