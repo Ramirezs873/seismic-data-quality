@@ -156,46 +156,80 @@ def event_catalogue(client,
 
     return data
 
-def preprocess(wave_list_dict,
+def preprocess(wave_dict, 
+               window = True, 
+               filter = True, 
+               window_type = "hann", 
+               filter_order = 2, 
+               filter_cutoff = 1, 
+               filter_type = 'low', 
                sensitivity = 2.994697576134245E8):
     """
-    Applies a mean removal and detrending 
-    to a list of wave dictionaries with isolate NS and EW components
-    then deconvolves the instrument sensitivity
-    into velocity values (m/s).
+    Applies prepocessing to a list of dictionary seismic waveform data.
+    Mean removal and detrending is applied. There is also the option
+    to apply a window function and a Butterworth filter.
 
     Parameters:
         wave_dict (list):
-            List of dictionaries containing seismic waveform data 
-            in the form (EW_data, NS_data).
-            Dictionary containing seismic waveform data 
-            in the form (EW_data, NS_data).
+            List of dictionaries containing seismic waveform data.
+        window (bool):
+            True/False. If True, applies a window function.
+        filter (bool):
+            True/False. If True, applies a Butterworth filter.
+        window_type (str):
+            Type of window function to apply. 
+            For options see scipy.signal.windows.
+        filter_order (int):
+            Order of the Butterworth filter.
+        filter_cutoff (float):
+            Cutoff frequency of the Butterworth filter in Hz.
+        filter_type (str):
+            Type of Butterworth filter to apply. 
+            See scipy.signal.butter for options.
         sensitivity (float):
             Seismic instrument sensitivity.
 
     Returns:
         preprocessed_dict (list):
             List of dictionaries containing preprocessed seismic waveform data 
-            in the form (EW_data, NS_data).
+            in the form (EW_data, NS_data, sampling_rate, start_time).
     """
 
-    # Storage
-    preprocessed_dict = []
+    preprocessed_dict = {}
 
-    for i, wave in enumerate(wave_list_dict):
-        for station, (EW, NS, fs, t_start) in wave.items():
-            # Mean removal
-            NS_mr = NS - np.mean(NS)
-            EW_mr = EW - np.mean(EW)
-            # Detrend
-            NS = signal.detrend(NS_mr)
-            EW = signal.detrend(EW_mr)
-            # Convert to m/s
-            NS_v = NS / sensitivity
-            EW_v = EW / sensitivity
-            # Store Values
-            preprocessed_dict.append({station: (EW_v, NS_v, fs, t_start)})
-    
+    for station in wave_dict.keys():
+        # Copy
+        copyref = wave_dict[station].copy()
+        # Frequency
+        fs = copyref[0].stats.sampling_rate
+        # Start time
+        t_start = copyref[0].stats.starttime
+        # Define Componetns
+        NS = copyref[0].data
+        EW = copyref[1].data
+        #Mean removal
+        NS_mr = NS - np.mean(NS)
+        EW_mr = EW - np.mean(EW)
+        # Detrend
+        NS = signal.detrend(NS_mr)
+        EW = signal.detrend(EW_mr)
+        # Convert to m/s
+        NS_v = NS / sensitivity
+        EW_v = EW / sensitivity
+        if window == True:
+            # Window function
+            window = getattr(signal.windows, window_type)
+            NS_v = NS_v * window(len(NS_v))
+            EW_v = EW_v * window(len(EW_v))
+        if filter == True:
+            # Filter function
+            sos = signal.butter(filter_order, filter_cutoff, fs=fs, btype=filter_type, analog=False, output='sos')
+            NS_v = signal.sosfiltfilt(sos, NS_v)
+            EW_v = signal.sosfiltfilt(sos, EW_v)
+
+        # Store Values
+        preprocessed_dict[station] = (EW_v, NS_v, fs, t_start)
+
     return preprocessed_dict
         
 def amplitudes(wave_list_dict):
