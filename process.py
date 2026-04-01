@@ -12,6 +12,8 @@ from collections import defaultdict
 import obspy
 import csv
 from obspy.clients.fdsn.header import FDSNNoDataException
+from scipy.signal import windows 
+
 
 
 
@@ -157,13 +159,13 @@ def event_catalogue(client,
     return data
 
 def preprocess(wave_dict, 
-               window = True, 
-               filter = True, 
                window_type = "hann", 
                filter_order = 2, 
                filter_cutoff = 1, 
                filter_type = 'low', 
-               sensitivity = 2.994697576134245E8):
+               sensitivity = 2.994697576134245E8,
+               apply_window = True, 
+               apply_filter = True):
     """
     Applies prepocessing to a list of dictionary seismic waveform data.
     Mean removal and detrending is applied. There is also the option
@@ -172,10 +174,6 @@ def preprocess(wave_dict,
     Parameters:
         wave_dict (list):
             List of dictionaries containing seismic waveform data.
-        window (bool):
-            True/False. If True, applies a window function.
-        filter (bool):
-            True/False. If True, applies a Butterworth filter.
         window_type (str):
             Type of window function to apply. 
             For options see scipy.signal.windows.
@@ -188,6 +186,10 @@ def preprocess(wave_dict,
             See scipy.signal.butter for options.
         sensitivity (float):
             Seismic instrument sensitivity.
+        apply_window (bool):
+            True/False. If True, applies a window function.
+        apply_filter (bool):
+            True/False. If True, applies a Butterworth filter.
 
     Returns:
         preprocessed_dict (list):
@@ -216,12 +218,12 @@ def preprocess(wave_dict,
         # Convert to m/s
         NS_v = NS / sensitivity
         EW_v = EW / sensitivity
-        if window == True:
+        if apply_window == True:
             # Window function
             window = getattr(signal.windows, window_type)
             NS_v = NS_v * window(len(NS_v))
             EW_v = EW_v * window(len(EW_v))
-        if filter == True:
+        if apply_filter == True:
             # Filter function
             sos = signal.butter(filter_order, filter_cutoff, fs=fs, btype=filter_type, analog=False, output='sos')
             NS_v = signal.sosfiltfilt(sos, NS_v)
@@ -634,6 +636,102 @@ def cc_correction(ref_dict,
 
     plt.show()       
 
+
+def tabulate_cc_correction(ref_dict, 
+                           target_dict,
+                           location='default_title'):
+    
+    """
+    Tabulate correction angles for sensors from seismic waveform data stored in a dictionary.
+    
+    Parameters:
+    wave_dict (dict):
+        Dictionary containing seismic waveform data for the reference station.
+    target_dict (dict):
+        Dictionary containing seismic waveform data.  
+    location (str):
+        Title/location for the output table and CSV file.
+
+    Returns:
+    df (DataFrame):
+        DataFrame containing peak angles for each station.
+    """
+    
+    # Setup up table storage
+    angle_results = []  
+    
+    # Setup reference station for first subplot
+    ref_station = list(ref_dict.keys())[0]
+
+    ref_NS = ref_dict[ref_station][1] 
+    ref_EW = ref_dict[ref_station][0]
+
+    if ref_NS is None or ref_EW is None:
+        raise ValueError("Reference station missing required NS/EW channels")
+    
+    print(f"Processing reference station: {ref_station}...")
+
+    # Loop through stations, cross correlate, and tabulate
+    for i, (station, stream) in enumerate(target_dict.items(), start=2):
+        print(f"Processing {station}...")
+            
+        target_NS = target_dict[station][1] 
+        target_EW = target_dict[station][0]
+        
+        if target_NS is None or target_EW is None:
+            print(f"{station}: missing required channels (NS options: {NS_channel}, EW options: {EW_channel}), skipping.")
+            continue
+            
+        # Match channel lengths
+        n = min(len(ref_NS.data), len(ref_EW.data), len(target_NS.data), len(target_EW.data))
+        y1 = np.asarray(ref_NS)[:n]
+        x1 = np.asarray(ref_EW)[:n]
+        y2 = np.asarray(target_NS)[:n]
+        x2 = np.asarray(target_EW)[:n]
+
+        # Apply peak normalization
+            
+        scale1 = np.max(np.sqrt((x1**2) + (y1**2)))
+        x1 = x1 / scale1
+        y1 = y1 / scale1
+
+        scale2 = np.max(np.sqrt((x2**2) + (y2**2)))
+        x2 = x2 / scale2
+        y2 = y2 / scale2
+        
+        # Investigate cross correlation
+        # Method from Misalignment Angle Correction of Borehole 
+        # Seismic Sensors: The Case Study of
+        # the Collalto Seismic Network
+        # Diez Zaldívar
+        # 2016
+        # For full derivation, see the paper above. Only vital steps are conducted here.
+        
+        S_r = x1 +1j*y1 # Reference waveform
+        S_k = x2 +1j*y2 # Target waveform
+
+        # m = (G^H G)^-1 G^H d)
+        # G = S_k, H is conjugate transpose matrix, d = S_r
+        # => m_k = (S_k^H * S_k)^-1 *S_k^H * S_r
+        # => m_k = sum(|S_k|^2)^-1 * sum(conj(S_k) *S_r)
+        m_k = np.sum(np.conj(S_k)* S_r)/np.sum(np.abs(S_k)**2)
+        phi = np.arctan2(np.imag(m_k), np.real(m_k)) # angle between the target and reference waveform
+
+        # Compute rotation angle
+        angle_diff = np.rad2deg(phi)
+        if angle_diff > 180:
+            angle_diff = angle_diff - 360
+
+        # Store results in table
+        angle_results.append({"Station": station,"Angle Correction": f'{angle_diff:.2f}'})
+
+    # Tabulate
+    time = target_dict[station][3]
+    df = pd.DataFrame(angle_results)
+    df.to_csv(f'seismic_directions_{location}.csv', index=False)
+    print(f"Alignments for {location} Earthquake @ {time} (UTC):")
+
+    return df
 
 
 
