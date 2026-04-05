@@ -209,32 +209,38 @@ def preprocess(wave_dict,
         # Define Componetns
         NS = copyref[0].data
         EW = copyref[1].data
+        Z = copyref[2].data
         #Mean removal
         NS_mr = NS - np.mean(NS)
         EW_mr = EW - np.mean(EW)
+        Z_mr = Z - np.mean(Z)
         # Detrend
         NS = signal.detrend(NS_mr)
         EW = signal.detrend(EW_mr)
+        Z = signal.detrend(Z_mr)
         # Convert to m/s
         NS_v = NS / sensitivity
         EW_v = EW / sensitivity
+        Z_v = Z / sensitivity
         if apply_window == True:
             # Window function
             window = getattr(signal.windows, window_type)
             NS_v = NS_v * window(len(NS_v))
             EW_v = EW_v * window(len(EW_v))
+            Z_v = Z_v * window(len(Z_v))
         if apply_filter == True:
             # Filter function
             sos = signal.butter(filter_order, filter_cutoff, fs=fs, btype=filter_type, analog=False, output='sos')
             NS_v = signal.sosfiltfilt(sos, NS_v)
             EW_v = signal.sosfiltfilt(sos, EW_v)
+            Z_v = signal.sosfiltfilt(sos, Z_v)
 
         # Store Values
-        preprocessed_dict[station] = (EW_v, NS_v, fs, t_start)
+        preprocessed_dict[station] = (EW_v, NS_v, Z_v, fs, t_start)
 
     return preprocessed_dict
         
-def amplitudes(wave_list_dict):
+def amplitudes(wave_dict):
     """
     Calculates the maximum, mean and median amplitudes 
     of the NS and EW seismic components from a list of wave dictionaries.
@@ -249,55 +255,37 @@ def amplitudes(wave_list_dict):
     #Storage
     amplitudes = []
 
-    for i, wave in enumerate(wave_list_dict):
-        for station, (EW, NS, fs, t_start) in wave.items():
-            # Max amplitude
-            NS_amp = np.max(np.abs(NS)) 
-            EW_amp = np.max(np.abs(EW))
-            # Mean amplitude
-            NS_mean_amp = np.mean(np.abs(NS))
-            EW_mean_amp = np.mean(np.abs(EW))
-            # Median amplitude
-            NS_median_amp = np.median(np.abs(NS))
-            EW_median_amp = np.median(np.abs(EW))
-            # Store Values
-            amplitudes.append({"station": station,
-                          "NS_max_amp": NS_amp,
-                          "EW_max_amp": EW_amp,
-                          "NS_mean_amp": NS_mean_amp,
-                          "EW_mean_amp": EW_mean_amp,
-                          "NS_median_amp": NS_median_amp,
-                          "EW_median_amp": EW_median_amp})
-            
-            print(f"Amplitudes for {station}: {amplitudes}")
-            
+    for station, (EW, NS, Z, fs, t_start) in wave_dict.items():
+        # Max amplitude
+        NS_amp = np.max(np.abs(NS)) 
+        EW_amp = np.max(np.abs(EW))
+        Z_amp = np.max(np.abs(Z))   
+        # Mean amplitude
+        NS_mean_amp = np.mean(np.abs(NS))
+        EW_mean_amp = np.mean(np.abs(EW))
+        Z_mean_amp = np.mean(np.abs(Z))
+        # Median amplitude
+        NS_median_amp = np.median(np.abs(NS))
+        EW_median_amp = np.median(np.abs(EW))
+        Z_median_amp = np.median(np.abs(Z))
+        # Store Values
+        amplitudes.append({"station": station,
+                        "NS_max_amp": float(NS_amp),
+                        "EW_max_amp": float(EW_amp),
+                        "Z_max_amp": float(Z_amp),
+                        "NS_mean_amp": float(NS_mean_amp),
+                        "EW_mean_amp": float(EW_mean_amp),
+                        "Z_mean_amp": float(Z_mean_amp),
+                        "NS_median_amp": float(NS_median_amp),
+                        "EW_median_amp": float(EW_median_amp),
+                        "Z_median_amp": float(Z_median_amp)})
+        
+        print(f"Amplitudes for {station}: {amplitudes}")
+        
     return amplitudes
 
-def find_channel(stream, options):
-    """
-    Find appropriate NS and EW Channels from a chosen stream. 
-    Code from align.py.
-    
-    Parameters:
-    stream (obspy.core.stream.Stream):
-        An ObsPy stream object.
-    options (list of str):
-        A list of channel codes.
-    """
-    # Loop through streams and find the first associated channel code
-    for ch in options:
-        tr = stream.select(channel=ch)
-        if len(tr) > 0:
-            return tr[0] # Return first channel code
-        
-    # If none are found
-    return None 
-
 def signal_to_noise(wave_dict, 
-                    filtered_dict, 
-                    Z_channel, 
-                    NS_channel, 
-                    EW_channel):
+                    filtered_dict):
     """
     Calculates the noise to signal ratio for the 
     Z, NS and EW components of seismic data and 
@@ -319,53 +307,44 @@ def signal_to_noise(wave_dict,
     # Setup Storage
     wave_data = {}
     # Loop through wave_dict, find the channels, and store the data in a new dictionary
-    for station, stream in wave_dict.items():
-            print(f"Processing {station}...")
-            st = Stream(stream)
-            st.sort(['channel'])
-            Z = find_channel(st, Z_channel) # Try to find Z channel from function input
-            NS = find_channel(st, NS_channel) # Try to find NS channel from function input
-            EW = find_channel(st, EW_channel) # Try to find EW channel from function input
-            # Warnings for missing channels.
-            if Z is None:
-                print(f"Warning: Missing Z channel for {station}. Skipping."
-                        "This may cause issues if the Z channel is not missing in wave_dict.")
-            if NS is None:
-                print(f"Warning: Missing NS channel for {station}. Skipping."
-                        "This may cause issues if the NS channel is not missing in wave_dict.")
-            if EW is None:
-                print(f"Warning: Missing EW channel for {station}. Skipping."
-                        "This may cause issues if the EW channel is not missing in wave_dict.")
-            wave_data[station] = {
-                "Z": Z.data if Z is not None else None,
-                "NS": NS.data if NS is not None else None,
-                "EW": EW.data if EW is not None else None}
+
+    for station, (EW, NS, Z, fs, t_start) in wave_dict.items():
+        print(f"Processing {station}...")
+        # Warnings for missing channels.
+        if Z is None:
+            print(f"Warning: Missing Z channel for {station}. Skipping."
+                    "This may cause issues if the Z channel is not missing in wave_dict.")
+        if NS is None:
+            print(f"Warning: Missing NS channel for {station}. Skipping."
+                    "This may cause issues if the NS channel is not missing in wave_dict.")
+        if EW is None:
+            print(f"Warning: Missing EW channel for {station}. Skipping."
+                    "This may cause issues if the EW channel is not missing in wave_dict.")
+        wave_data[station] = {
+            "Z": Z.data if Z is not None else None,
+            "NS": NS.data if NS is not None else None,
+            "EW": EW.data if EW is not None else None}
 
     # Set up filtered seismic waveform data
     # Setup Storage
     filt_data = {}
     # Loop through filtered_dict, find the channels, and store the data in a new dictionary
-    for station, stream in filtered_dict.items():
-            print(f"Processing {station}...")
-            st = Stream(stream)
-            st.sort(['channel'])
-            Z = find_channel(st, Z_channel) # Try to find Z channel from function input
-            NS = find_channel(st, NS_channel) # Try to find NS channel from function input
-            EW = find_channel(st, EW_channel) # Try to find EW channel from function input
-            # Warnings for missing channels.
-            if Z is None:
-                print(f"Warning: Missing Z channel for {station}. Skipping."
-                        "This may cause issues if the Z channel is not missing in wave_dict.")
-            if NS is None:
-                print(f"Warning: Missing NS channel for {station}. Skipping."
-                        "This may cause issues if the NS channel is not missing in wave_dict.")
-            if EW is None:
-                print(f"Warning: Missing EW channel for {station}. Skipping."
-                        "This may cause issues if the EW channel is not missing in wave_dict.")
-            filt_data[station] = {
-                "Z": Z.data if Z is not None else None,
-                "NS": NS.data if NS is not None else None,
-                "EW": EW.data if EW is not None else None}
+    for station, (EW, NS, Z, fs, t_start) in filtered_dict.items():
+        print(f"Processing {station}...")
+        # Warnings for missing channels.
+        if Z is None:
+            print(f"Warning: Missing Z channel for {station}. Skipping."
+                    "This may cause issues if the Z channel is not missing in wave_dict.")
+        if NS is None:
+            print(f"Warning: Missing NS channel for {station}. Skipping."
+                    "This may cause issues if the NS channel is not missing in wave_dict.")
+        if EW is None:
+            print(f"Warning: Missing EW channel for {station}. Skipping."
+                    "This may cause issues if the EW channel is not missing in wave_dict.")
+        filt_data[station] = {
+            "Z": Z.data if Z is not None else None,
+            "NS": NS.data if NS is not None else None,
+            "EW": EW.data if EW is not None else None}
     
     # Calculate noise to signal ratio for each station and component, and store in a new dictionary
     # Setup storage
@@ -501,8 +480,8 @@ def cc_correction(ref_dict,
                 fontweight="bold",
                 clip_on=False)
 
-    time = ref_dict[ref_station][3]
-    timespan = len(ref_NS.data) / ref_dict[ref_station][2]
+    time = ref_dict[ref_station][4]
+    timespan = len(ref_NS.data) / ref_dict[ref_station][3]
 
     ax.set_title(f"Horizontal Particle Motion Plot \n for {ref_station} at {time} for {timespan} seconds", y=1.15)    
 
@@ -621,8 +600,8 @@ def cc_correction(ref_dict,
                     clip_on=False)
                 
             # For title
-            time = target_dict[station][3]
-            timespan = len(target_NS.data) / target_dict[station][2]
+            time = target_dict[station][4]
+            timespan = len(target_NS.data) / target_dict[station][3]
             
             ax.set_title(f"Horizontal Particle Motion Plot \n for {station} at {time} for {timespan} seconds", y=1.15)    
 
@@ -635,7 +614,6 @@ def cc_correction(ref_dict,
             plt.savefig(f'{png_title}.png', dpi=300)
 
     plt.show()       
-
 
 def tabulate_cc_correction(ref_dict, 
                            target_dict,
@@ -679,7 +657,7 @@ def tabulate_cc_correction(ref_dict,
         target_EW = target_dict[station][0]
         
         if target_NS is None or target_EW is None:
-            print(f"{station}: missing required channels (NS options: {NS_channel}, EW options: {EW_channel}), skipping.")
+            print(f"{station}: missing required channels")
             continue
             
         # Match channel lengths
@@ -726,7 +704,7 @@ def tabulate_cc_correction(ref_dict,
         angle_results.append({"Station": station,"Angle Correction": f'{angle_diff:.2f}'})
 
     # Tabulate
-    time = target_dict[station][3]
+    time = target_dict[station][4]
     df = pd.DataFrame(angle_results)
     df.to_csv(f'seismic_directions_{location}.csv', index=False)
     print(f"Alignments for {location} Earthquake @ {time} (UTC):")
