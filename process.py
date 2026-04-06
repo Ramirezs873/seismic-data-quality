@@ -20,14 +20,18 @@ from scipy.signal import windows
 def event_catalogue(client, 
                  network, 
                  station, 
+                 event_t0 = None,
+                 event_t1 = None,
                  radius = 85,
                  min_mag = 6,
-                 max_depth = 100,
+                 max_depth = None,
                  title = 'CWA',  
                  user=None, 
                  password=None, 
                  config=None,
-                 csv = True):
+                 csv = True,
+                 map = True,
+                 projection = 'local'):
 
     """
     Gather seismic station coordinates and relevant event information
@@ -43,10 +47,14 @@ def event_catalogue(client,
         Network code for group 1. e.g 'IU', 'AU'.
     station (str): 
         Station code for group 1. e.g 'CASY', 'CWA90'. 
+    event_t0 (UTC):
+        (Optional) Start time for event search. If None, uses station start time.
+    event_t1 (UTC):
+        (Optional) End time for event search. If None, uses station end time.
     min_mag (float):
         Minimum magnitude to search for events.
     max_depth (float):
-        Maximum depth (km) to search for events.
+        (Optional) Maximum depth (km) to search for events.
     user (str):
         Username to access the client.
     password (str):
@@ -55,6 +63,10 @@ def event_catalogue(client,
         (Optional) Configuration yaml file. 
     csv (bool):
         True/False. True to write station info and event catalogue to a csv file.
+    map (bool):
+        True/False. True to plot event locations for each station.
+    projection (str):
+        Projection for event location plots. See obspy.core.event.catalog.Catalog.plot for options.
 
     Returns:
     data (list of dict):
@@ -109,10 +121,10 @@ def event_catalogue(client,
             latitude=info["latitude"],
             longitude=info["longitude"],
             maxradius= radius, # degrees
-            starttime=info["t_start"],
-            endtime=info["t_end"],
+            starttime=event_t0 if event_t0 is not None else info["t_start"],
+            endtime=event_t1 if event_t1 is not None else info["t_end"],
             minmagnitude=min_mag,
-            maxdepth= max_depth # km
+            maxdepth=max_depth # km
             )
         except FDSNNoDataException:
             print(f"No events found for {station} with min_mag={min_mag} and max_depth={max_depth}.")
@@ -130,8 +142,8 @@ def event_catalogue(client,
                 "station": station,
                 "station_latitude": info["latitude"],
                 "station_longitude": info["longitude"],
-                "station_t_start": info["t_start"],
-                "station_t_end": info["t_end"],
+                "station_t_start": event_t0 if event_t0 is not None else info["t_start"],
+                "station_t_end": event_t1 if event_t1 is not None else info["t_end"],
                 "event_t": origin.time,
                 "event_latitude": origin.latitude,
                 "event_longitude": origin.longitude,
@@ -156,6 +168,10 @@ def event_catalogue(client,
 
             print(f"Saved to: {csv_file_path}")
 
+    if map == True:
+        for station in event_dict.keys():
+            event_dict[station].plot(projection = projection, title = station)             
+        
     return data
 
 def preprocess(wave_dict, 
