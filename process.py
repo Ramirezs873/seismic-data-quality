@@ -319,13 +319,14 @@ def signal_to_noise(wave_dict,
         List of channel codes for the EW component.
     """
     
-    # Set up seismic waveform data
+    # Set up seismic waveform data from wave_dict and the filtered data from filtered_dict 
+    # and calculate the noise to signal ratio.
     # Setup Storage
-    wave_data = {}
+    ratio_dict = {}
     # Loop through wave_dict, find the channels, and store the data in a new dictionary
-
     for station, (EW, NS, Z, fs, t_start) in wave_dict.items():
         print(f"Processing {station}...")
+        # Seismic Waveform Data
         # Warnings for missing channels.
         if Z is None:
             print(f"Warning: Missing Z channel for {station}. Skipping."
@@ -336,68 +337,51 @@ def signal_to_noise(wave_dict,
         if EW is None:
             print(f"Warning: Missing EW channel for {station}. Skipping."
                     "This may cause issues if the EW channel is not missing in wave_dict.")
-        wave_data[station] = {
-            "Z": Z.data if Z is not None else None,
-            "NS": NS.data if NS is not None else None,
-            "EW": EW.data if EW is not None else None}
 
-    # Set up filtered seismic waveform data
-    # Setup Storage
-    filt_data = {}
-    # Loop through filtered_dict, find the channels, and store the data in a new dictionary
-    for station, (EW, NS, Z, fs, t_start) in filtered_dict.items():
-        print(f"Processing {station}...")
-        # Warnings for missing channels.
-        if Z is None:
-            print(f"Warning: Missing Z channel for {station}. Skipping."
-                    "This may cause issues if the Z channel is not missing in wave_dict.")
-        if NS is None:
-            print(f"Warning: Missing NS channel for {station}. Skipping."
-                    "This may cause issues if the NS channel is not missing in wave_dict.")
-        if EW is None:
-            print(f"Warning: Missing EW channel for {station}. Skipping."
-                    "This may cause issues if the EW channel is not missing in wave_dict.")
-        filt_data[station] = {
-            "Z": Z.data if Z is not None else None,
-            "NS": NS.data if NS is not None else None,
-            "EW": EW.data if EW is not None else None}
-    
-    # Calculate noise to signal ratio for each station and component, and store in a new dictionary
-    # Setup storage
-    ratio_dict = {}
+        # Filtered Waveform Data
+        for i, (EW_filt, NS_filt, Z_filt, fs_filt, t_start_filt) in filtered_dict.items():
+                # Warnings for missing channels.
+            if Z_filt is None:
+                print(f"Warning: Missing Z channel for filtered {station}. Skipping."
+                        "This may cause issues if the Z channel is not missing in filtered_dict.")
+            if NS_filt is None:
+                print(f"Warning: Missing NS channel for filtered {station}. Skipping."
+                        "This may cause issues if the NS channel is not missing in filtered_dict.")
+            if EW_filt is None:
+                print(f"Warning: Missing EW channel for filtered {station}. Skipping."
+                        "This may cause issues if the EW channel is not missing in filtered_dict.")
 
-    for station in filt_data:
-        # Z component
-        if wave_data[station]["Z"] is not None and filt_data[station]["Z"] is not None:
-            noise_Z = wave_data[station]["Z"] - filt_data[station]["Z"]
-            signal_P_Z = np.mean(filt_data[station]["Z"] ** 2)
-            noise_P_Z = np.mean(noise_Z ** 2)
-            ratio_Z = 10 * np.log10(signal_P_Z / noise_P_Z)
-        else:
-            ratio_Z = None
-            print(f"No Data for Z component in {station}. Skipping.")
-        # NS component
-        if wave_data[station]["NS"] is not None and filt_data[station]["NS"] is not None:
-            noise_NS = wave_data[station]["NS"] - filt_data[station]["NS"]
-            signal_P_NS = np.mean(filt_data[station]["NS"] ** 2)
-            noise_P_NS = np.mean(noise_NS ** 2)
-            ratio_NS = 10 * np.log10(signal_P_NS / noise_P_NS)
-        else:
-            ratio_NS = None
-            print(f"No Data for NS component in {station}. Skipping.")
-        # EW component
-        if wave_data[station]["EW"] is not None and filt_data[station]["EW"] is not None:
-            noise_EW = wave_data[station]["EW"] - filt_data[station]["EW"]
-            signal_P_EW = np.mean(filt_data[station]["EW"] ** 2)
-            noise_P_EW = np.mean(noise_EW ** 2)
-            ratio_EW = 10 * np.log10(signal_P_EW / noise_P_EW)
-        else:
-            ratio_EW = None
-            print(f"No Data for EW component in {station}. Skipping.")
-        # Store the ratios in a new dictionary
-        ratio_dict[station] = {"Z": float(ratio_Z) if ratio_Z is not None else None,
-                               "NS": float(ratio_NS) if ratio_NS is not None else None,
-                               "EW": float(ratio_EW) if ratio_EW is not None else None}
+            # Calculate noise to signal ratio for each station and component, and store in a new dictionary.
+            if Z is not None and Z_filt is not None:
+                noise_Z = Z - Z_filt
+                signal_P_Z = np.mean(Z_filt ** 2)
+                noise_P_Z = np.mean(noise_Z ** 2)
+                ratio_Z = 10 * np.log10(signal_P_Z / noise_P_Z)
+            else:
+                ratio_Z = None
+                print(f"No Data for Z component in {station}. Skipping.")
+            # NS component
+            if NS is not None and NS_filt is not None:
+                noise_NS = NS - NS_filt
+                signal_P_NS = np.mean(NS_filt ** 2)
+                noise_P_NS = np.mean(noise_NS ** 2)
+                ratio_NS = 10 * np.log10(signal_P_NS / noise_P_NS)
+            else:
+                ratio_NS = None
+                print(f"No Data for NS component in {station}. Skipping.")
+            # EW component
+            if EW is not None and EW_filt is not None:
+                noise_EW = EW - EW_filt
+                signal_P_EW = np.mean(EW_filt ** 2)
+                noise_P_EW = np.mean(noise_EW ** 2)
+                ratio_EW = 10 * np.log10(signal_P_EW / noise_P_EW)
+            else:
+                ratio_EW = None
+                print(f"No Data for EW component in {station}. Skipping.")
+            # Store the ratios in a new dictionary
+            ratio_dict[station] = {"Z": float(ratio_Z) if ratio_Z is not None else None,
+                                "NS": float(ratio_NS) if ratio_NS is not None else None,
+                                "EW": float(ratio_EW) if ratio_EW is not None else None}
 
     return ratio_dict
 
