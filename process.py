@@ -13,6 +13,8 @@ import obspy
 import csv
 from obspy.clients.fdsn.header import FDSNNoDataException
 from scipy.signal import windows 
+from scipy.signal import resample
+
 
 
 
@@ -177,7 +179,7 @@ def event_catalogue(client,
 def preprocess(wave_dict, 
                window_type = "hann", 
                filter_order = 2, 
-               filter_cutoff = 1, 
+               filter_freq = 1, 
                filter_type = 'low', 
                sensitivity = 2.994697576134245E8,
                apply_window = True, 
@@ -195,8 +197,9 @@ def preprocess(wave_dict,
             For options see scipy.signal.windows.
         filter_order (int):
             Order of the Butterworth filter.
-        filter_cutoff (float):
-            Cutoff frequency of the Butterworth filter in Hz.
+        filter_freq (float):
+            Cutoff frequency of the Butterworth filter in Hz. 
+            Can be expressed as a single value for low/high pass, or a list of two values for bandpass.
         filter_type (str):
             Type of Butterworth filter to apply. 
             See scipy.signal.butter for options.
@@ -246,7 +249,7 @@ def preprocess(wave_dict,
             Z_v = Z_v * window(len(Z_v))
         if apply_filter == True:
             # Filter function
-            sos = signal.butter(filter_order, filter_cutoff, fs=fs, btype=filter_type, analog=False, output='sos')
+            sos = signal.butter(filter_order, filter_freq, fs=fs, btype=filter_type, analog=False, output='sos')
             NS_v = signal.sosfiltfilt(sos, NS_v)
             EW_v = signal.sosfiltfilt(sos, EW_v)
             Z_v = signal.sosfiltfilt(sos, Z_v)
@@ -495,13 +498,29 @@ def cc_correction(ref_dict,
             if target_NS is None or target_EW is None:
                 print(f"{station}: missing required channels, skipping.")
                 continue
-            
+
+            # Resample if required
+            ref_fs = ref_dict[ref_station][3]
+            target_fs = target_dict[station][3]
+
+            if ref_fs != target_fs:
+                print(f"{station}: resampling from {target_fs} Hz → {ref_fs} Hz")
+
+                n_samples = int(len(target_NS.data) * ref_fs / target_fs)
+
+                target_NS_resampled = resample(np.asarray(target_NS), n_samples)
+                target_EW_resampled = resample(np.asarray(target_EW), n_samples)
+                
+            else:
+                target_NS_resampled = np.asarray(target_NS)
+                target_EW_resampled = np.asarray(target_EW)
+
             # Match channel lengths
-            n = min(len(ref_NS.data), len(ref_EW.data), len(target_NS.data), len(target_EW.data))
-            y1 = np.asarray(ref_NS)[:n]
-            x1 = np.asarray(ref_EW)[:n]
-            y2 = np.asarray(target_NS)[:n]
-            x2 = np.asarray(target_EW)[:n]
+            n = min(len(ref_NS), len(ref_EW), len(target_NS_resampled), len(target_EW_resampled))
+            x1 = ref_EW[:n]
+            y1 = ref_NS[:n]
+            x2 = target_EW_resampled[:n]
+            y2 = target_NS_resampled[:n]
 
             # Apply peak normalization
             scale1 = np.max(np.sqrt((x1**2) + (y1**2)))
@@ -659,13 +678,30 @@ def tabulate_cc_correction(ref_dict,
         if target_NS is None or target_EW is None:
             print(f"{station}: missing required channels")
             continue
+        
+        # Resample if required
+        ref_fs = ref_dict[ref_station][3]
+        target_fs = target_dict[station][3]
+
+        if ref_fs != target_fs:
+            print(f"{station}: resampling from {target_fs} Hz → {ref_fs} Hz")
+
+            n_samples = int(len(target_NS.data) * ref_fs / target_fs)
+
+            target_NS_resampled = resample(np.asarray(target_NS), n_samples)
+            target_EW_resampled = resample(np.asarray(target_EW), n_samples)
             
+        else:
+            target_NS_resampled = np.asarray(target_NS)
+            target_EW_resampled = np.asarray(target_EW)
+
         # Match channel lengths
-        n = min(len(ref_NS.data), len(ref_EW.data), len(target_NS.data), len(target_EW.data))
-        y1 = np.asarray(ref_NS)[:n]
-        x1 = np.asarray(ref_EW)[:n]
-        y2 = np.asarray(target_NS)[:n]
-        x2 = np.asarray(target_EW)[:n]
+        n = min(len(ref_NS), len(ref_EW), len(target_NS_resampled), len(target_EW_resampled))
+        x1 = ref_EW[:n]
+        y1 = ref_NS[:n]
+        x2 = target_EW_resampled[:n]
+        y2 = target_NS_resampled[:n]
+
 
         # Apply peak normalization
             
