@@ -182,6 +182,8 @@ def preprocess(wave_dict,
                filter_freq = 1, 
                filter_type = 'low', 
                sensitivity = 2.994697576134245E8,
+               mean_removal = True,
+                detrend = True,
                apply_window = True, 
                apply_filter = True):
     """
@@ -229,24 +231,39 @@ def preprocess(wave_dict,
         NS = copyref[0].data
         EW = copyref[1].data
         Z = copyref[2].data
-        #Mean removal
-        NS_mr = NS - np.mean(NS)
-        EW_mr = EW - np.mean(EW)
-        Z_mr = Z - np.mean(Z)
-        # Detrend
-        NS = signal.detrend(NS_mr)
-        EW = signal.detrend(EW_mr)
-        Z = signal.detrend(Z_mr)
+        if mean_removal == True:
+            #Mean removal
+            NS_mr = NS - np.mean(NS)
+            EW_mr = EW - np.mean(EW)
+            Z_mr = Z - np.mean(Z)
+        else:
+            NS_mr = NS
+            EW_mr = EW
+            Z_mr = Z
+        if detrend == True:
+            # Detrend
+            NS = signal.detrend(NS_mr)
+            EW = signal.detrend(EW_mr)
+            Z = signal.detrend(Z_mr)
+        else:
+            NS = NS_mr
+            EW = EW_mr
+            Z = Z_mr
         # Convert to m/s
         NS_v = NS / sensitivity
         EW_v = EW / sensitivity
         Z_v = Z / sensitivity
         if apply_window == True:
             # Window function
+            n = int(len(NS_v) * 0.05) # 5% taper
+            taper = np.ones(len(NS_v))
             window = getattr(signal.windows, window_type)
-            NS_v = NS_v * window(len(NS_v))
-            EW_v = EW_v * window(len(EW_v))
-            Z_v = Z_v * window(len(Z_v))
+            w = window(2 * n)
+            taper[:n] = w[:n]
+            taper[-n:] = w[-n:]
+            NS_v = NS_v * taper
+            EW_v = EW_v * taper
+            Z_v = Z_v * taper
         if apply_filter == True:
             # Filter function
             sos = signal.butter(filter_order, filter_freq, fs=fs, btype=filter_type, analog=False, output='sos')
