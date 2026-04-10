@@ -258,6 +258,51 @@ def preprocess(wave_dict,
         preprocessed_dict[station] = (EW_v, NS_v, Z_v, fs, t_start)
 
     return preprocessed_dict
+
+def select_time(wave_dict, 
+                t_start, 
+                duration):
+    
+    """
+    Select a specific time window from seismic waveform data stored in a dictionary without altering the original.
+    Adjusted from align.py for use with preprocess() in process.py.
+
+    Parameters:
+    wave_dict (dict):
+        Dictionary containing seismic waveform data.
+    t_start (UTCDateTime):
+        Start time for the time window.
+    duration (float):
+        Duration of the time window in seconds.
+    
+    Returns:
+    new_dict (dict):
+        Dictionary containing selected seismic waveform data.
+    """
+    new_dict = {}
+
+    for station, (EW, NS, Z, fs, starttime) in wave_dict.items():
+
+        # New start and end times
+        dt_start = t_start - starttime
+        new_start = int(dt_start * fs)
+        new_end = int(new_start + duration * fs)
+
+        # Safety bounds (important!)
+        new_start = max(new_start, 0)
+        new_end = min(new_end, len(EW))
+
+        # trim data
+        EW_trim = EW[new_start:new_end]
+        NS_trim = NS[new_start:new_end]
+        Z_trim = Z[new_start:new_end]
+
+        # New start time 
+        new_starttime = starttime + (new_start / fs)
+
+        new_dict[station] = (EW_trim, NS_trim, Z_trim, fs, new_starttime)
+
+    return new_dict
         
 def amplitudes(wave_dict):
     """
