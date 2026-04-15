@@ -14,6 +14,7 @@ import csv
 from obspy.clients.fdsn.header import FDSNNoDataException
 from scipy.signal import windows 
 from scipy.signal import resample
+from obspy.signal import PPSD
 
 
 
@@ -96,8 +97,9 @@ def event_catalogue(client,
     else:
         print("File not found. Downloading data")
 
-        station_data = g1.get_stations(network=network, 
-                                        station=station) # Gather station data
+        station_data = g1.get_stations(network=network,
+                                        station=station,
+                                        level="response") # Gather station data
 
         station_data.write(str(file_path), format="STATIONXML")
         print(f"Saved to: {file_path}")
@@ -174,7 +176,7 @@ def event_catalogue(client,
         for station in event_dict.keys():
             event_dict[station].plot(projection = projection, title = station)             
         
-    return data
+    return data, station_data
 
 def preprocess(wave_dict, 
                window_type = "hann", 
@@ -228,8 +230,8 @@ def preprocess(wave_dict,
         # Start time
         t_start = copyref[0].stats.starttime
         # Define Componetns
-        NS = copyref[0].data
-        EW = copyref[1].data
+        EW = copyref[0].data
+        NS = copyref[1].data
         Z = copyref[2].data
         if mean_removal == True:
             #Mean removal
@@ -809,6 +811,53 @@ def tabulate_cc_correction(ref_dict,
 
     return df
 
+def ppsd(wave_dict, 
+         metadata, 
+         max_percentage=None):
+    """
+    Create a Probabilistic Power Spectral Density (PPSD) plot 
+    for seismic waveform data stored in a dictionary.
+    Parameters:
+    wave_dict (dict):
+        Dictionary containing seismic waveform data.
+    metadata (Inventory):
+        Obspy Inventory object containing station metadata for the seismic waveform data.
+    max_percentage (float, optional):
+        Maximum percentage of the distribution to display in the PPSD plot.
+    """
 
+    for station in wave_dict.keys():
+        # Copy
+        copy = wave_dict[station].copy()
+        # Define Componetns
+        EW = copy[0].data
+        NS = copy[1].data
+        Z = copy[2].data
 
-    
+        print(f"Processing {station}...")
+        # Seismic Waveform Data
+        # Warnings for missing channels.
+        if Z is None:
+            print(f"Warning: Missing Z channel for {station}. Skipping.")
+        if NS is None:
+            print(f"Warning: Missing NS channel for {station}. Skipping.")
+        if EW is None:
+            print(f"Warning: Missing EW channel for {station}. Skipping.")
+
+        # Plot EW componet
+        print(f"Plotting PPSD for {station} EW component...")
+        ppsd_EW = PPSD(stats = wave_dict[station][0].stats,metadata=metadata)
+        ppsd_EW.add(wave_dict[station][0])
+        ppsd_EW.plot(max_percentage=max_percentage)
+        # Plot NS componet
+        print(f"Plotting PPSD for {station} NS component...")
+        ppsd_NS = PPSD(stats = wave_dict[station][1].stats,metadata=metadata)
+        ppsd_NS.add(wave_dict[station][1])
+        ppsd_NS.plot(max_percentage=max_percentage)
+        # Plot Z componet
+        print(f"Plotting PPSD for {station} Z component...")
+        ppsd_Z = PPSD(stats = wave_dict[station][2].stats, metadata=metadata)
+        ppsd_Z.add(wave_dict[station][2])
+        ppsd_Z.plot(max_percentage=max_percentage)
+        
+
