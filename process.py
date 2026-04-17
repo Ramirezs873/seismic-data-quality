@@ -813,7 +813,8 @@ def tabulate_cc_correction(ref_dict,
 
 def ppsd(wave_dict, 
          metadata, 
-         max_percentage=None):
+         max_percentage=None,
+         plot_channel = ['EW', 'NS', 'Z']):
     """
     Create a Probabilistic Power Spectral Density (PPSD) plot 
     for seismic waveform data stored in a dictionary.
@@ -823,7 +824,9 @@ def ppsd(wave_dict,
     metadata (Inventory):
         Obspy Inventory object containing station metadata for the seismic waveform data.
     max_percentage (float, optional):
-        Maximum percentage of the distribution to display in the PPSD plot.
+        Maximum percentage of the distribution to display in the PPSD plot
+    plot_channel (list of str):
+        List of channel codes to plot. Options are 'EW', 'NS', and 'Z'.
     """
 
     for station in wave_dict.keys():
@@ -844,20 +847,28 @@ def ppsd(wave_dict,
         if EW is None:
             print(f"Warning: Missing EW channel for {station}. Skipping.")
 
-        # Plot EW componet
-        print(f"Plotting PPSD for {station} EW component...")
-        ppsd_EW = PPSD(stats = wave_dict[station][0].stats,metadata=metadata)
-        ppsd_EW.add(wave_dict[station][0])
-        ppsd_EW.plot(max_percentage=max_percentage)
-        # Plot NS componet
-        print(f"Plotting PPSD for {station} NS component...")
-        ppsd_NS = PPSD(stats = wave_dict[station][1].stats,metadata=metadata)
-        ppsd_NS.add(wave_dict[station][1])
-        ppsd_NS.plot(max_percentage=max_percentage)
-        # Plot Z componet
-        print(f"Plotting PPSD for {station} Z component...")
-        ppsd_Z = PPSD(stats = wave_dict[station][2].stats, metadata=metadata)
-        ppsd_Z.add(wave_dict[station][2])
-        ppsd_Z.plot(max_percentage=max_percentage)
-        
+        if plot_channel == 'EW':
+            # Plot EW componet
+            print(f"Plotting PPSD for {station} EW component...")
+            ppsd_EW = PPSD(stats = wave_dict[station][0].stats,metadata=metadata)
+            ppsd_EW.add(wave_dict[station][0])
+            ppsd_EW.plot(max_percentage=max_percentage)
+        if plot_channel == 'NS':
+            # Plot NS componet
+            print(f"Plotting PPSD for {station} NS component...")
+            ppsd_NS = PPSD(stats = wave_dict[station][1].stats,metadata=metadata)
+            ppsd_NS.add(wave_dict[station][1])
+            ppsd_NS.plot(max_percentage=max_percentage)
+        if plot_channel == 'Z':
+            # Plot Z componet
+            print(f"Plotting PPSD for {station} Z component...")
+            ppsd_Z = PPSD(stats = wave_dict[station][2].stats, metadata=metadata)
+            ppsd_Z.add(wave_dict[station][2])
+            ppsd_Z.plot(max_percentage=max_percentage)
+        # No component selected
+        if 'EW' not in plot_channel and 'NS' not in plot_channel and 'Z' not in plot_channel:
+            print(f"No components selected for {station}. PPSD not calculated or plotted. Please select at least one component.")
+        # Wrong input for plot_channel
+        if any(ch not in ['EW', 'NS', 'Z'] for ch in plot_channel):
+            print(f"Invalid plot_channel input. Please select from 'EW', 'NS', and 'Z'. No PPSD plotted for this station.")
 
