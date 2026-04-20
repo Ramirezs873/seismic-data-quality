@@ -870,7 +870,7 @@ def ppsd(wave_dict,
             ppsd_EW.add(wave_dict[station][0])
             ppsd_EW.plot(max_percentage=max_percentage, 
                          filename=f"{png_title}.png" if save_png == True else None, 
-                         show=False if show_plot == True else False)
+                         show=True if show_plot == True else False)
         if 'NS' in plot_channel:
             # Plot NS componet
             print(f"Plotting PPSD for {station} NS component...")
@@ -878,7 +878,7 @@ def ppsd(wave_dict,
             ppsd_NS.add(wave_dict[station][1])
             ppsd_NS.plot(max_percentage=max_percentage, 
                          filename=f"{png_title}.png" if save_png == True else None, 
-                         show=False if show_plot == True else False)
+                         show=True if show_plot == True else False)
         if 'Z' in plot_channel:
             # Plot Z componet
             print(f"Plotting PPSD for {station} Z component...")
@@ -886,5 +886,5 @@ def ppsd(wave_dict,
             ppsd_Z.add(wave_dict[station][2])
             ppsd_Z.plot(max_percentage=max_percentage, 
                        filename=f"{png_title}.png" if save_png == True else None, 
-                       show=False if show_plot == True else False)
+                       show=True if show_plot == True else False)
 
