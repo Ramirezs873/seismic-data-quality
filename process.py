@@ -816,7 +816,7 @@ def ppsd(wave_dict,
          max_percentage=None,
          plot_channel = ['EW', 'NS', 'Z'],
          save_png = True,
-         png_title = f'default_title',
+         png_title = 'default_title',
          show_plot = True):
     """
     Create a Probabilistic Power Spectral Density (PPSD) plot 
@@ -863,13 +863,18 @@ def ppsd(wave_dict,
         if EW is None:
             print(f"Warning: Missing EW channel for {station}. Skipping.")
 
+        if png_title == 'default_title':
+            title = f'ppsd_{station}.png'
+        else:
+            title = f'{png_title}.png'
+
         if 'EW' in plot_channel:
             # Plot EW componet
             print(f"Plotting PPSD for {station} EW component...")
             ppsd_EW = PPSD(stats = wave_dict[station][0].stats,metadata=metadata)
             ppsd_EW.add(wave_dict[station][0])
             ppsd_EW.plot(max_percentage=max_percentage, 
-                         filename=f"{png_title}.png" if save_png == True else None, 
+                         filename=title if save_png == True else None, 
                          show=True if show_plot == True else False)
         if 'NS' in plot_channel:
             # Plot NS componet
@@ -877,7 +882,7 @@ def ppsd(wave_dict,
             ppsd_NS = PPSD(stats = wave_dict[station][1].stats,metadata=metadata)
             ppsd_NS.add(wave_dict[station][1])
             ppsd_NS.plot(max_percentage=max_percentage, 
-                         filename=f"{png_title}.png" if save_png == True else None, 
+                         filename=title if save_png == True else None, 
                          show=True if show_plot == True else False)
         if 'Z' in plot_channel:
             # Plot Z componet
@@ -885,6 +890,6 @@ def ppsd(wave_dict,
             ppsd_Z = PPSD(stats = wave_dict[station][2].stats, metadata=metadata)
             ppsd_Z.add(wave_dict[station][2])
             ppsd_Z.plot(max_percentage=max_percentage, 
-                       filename=f"{png_title}.png" if save_png == True else None, 
+                       filename=title if save_png == True else None, 
                        show=True if show_plot == True else False)
 
