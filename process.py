@@ -15,6 +15,7 @@ from obspy.clients.fdsn.header import FDSNNoDataException
 from scipy.signal import windows 
 from scipy.signal import resample
 from obspy.signal import PPSD
+from obspy import Trace
 
 
 
@@ -893,3 +894,76 @@ def ppsd(wave_dict,
                        filename=title if save_png == True else None, 
                        show=True if show_plot == True else False)
 
+def find_channel(stream, options):
+    """
+    Find appropriate NS and EW Channels from a chosen stream.
+    
+    Parameters:
+    stream (obspy.core.stream.Stream):
+        An ObsPy stream object.
+    options (list of str):
+        A list of channel codes.
+    """
+    # Loop through streams and find the associated channel code
+    traces = []
+    for ch in options:
+        traces.extend(stream.select(channel=ch))
+        if len(traces) > 0:
+            return traces # Return first channel code
+        
+    # If none are found
+    return None 
+
+def amplitude_correction(wave_dict,
+                         NS_channel,
+                         EW_channel,
+                         Z_channel,
+                         NS_correction_factor,
+                         EW_correction_factor,
+                         Z_correction_factor):
+    
+    station_list = list(wave_dict.keys())
+    amplitude_corrected_obspy = defaultdict(list) 
+
+    for (station, stream, NS_correct, EW_correct, Z_correct) in zip(station_list, 
+                                                                    wave_dict.values(), 
+                                                                    NS_correction_factor, 
+                                                                    EW_correction_factor, 
+                                                                    Z_correction_factor):
+        print(f"Processing {station}...")
+        st = Stream(stream)
+        st.sort(['channel'])
+        NS = find_channel(st, NS_channel) 
+        EW = find_channel(st, EW_channel) 
+        Z = find_channel(st, Z_channel)
+
+        t_start = min(tr.stats.starttime for tr in st)
+        fs = st[0].stats.sampling_rate
+
+        NS_corrected = NS[0].data * NS_correct if NS else None
+        EW_corrected = EW[0].data * EW_correct if EW else None
+        Z_corrected = Z[0].data * Z_correct if Z else None
+
+        # Create new obspy stream with aligned data
+        st = Stream()
+        NS_name = NS[0].stats.channel if NS else None
+        EW_name = EW[0].stats.channel if EW else None
+        Z_name  = Z[0].stats.channel if Z else None
+        components = {EW_name: EW_corrected, NS_name: NS_corrected, Z_name: Z_corrected}
+        if NS_name is None or EW_name is None or Z_name is None:
+            print(f"Skipping {station}. Missing channel")
+            continue
+
+        for channel, data in components.items():
+            network_name, station_name, *_ = station.split('.')
+            tr = Trace(data=data)
+            tr.stats.network = network_name
+            tr.stats.station = station_name
+            tr.stats.channel = channel
+            tr.stats.starttime = UTC(t_start)
+            tr.stats.sampling_rate = fs
+            st.append(tr)
+
+        amplitude_corrected_obspy[station] = st
+    
+    return amplitude_corrected_obspy
