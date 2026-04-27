@@ -179,6 +179,444 @@ def event_catalogue(client,
         
     return data, station_data
 
+def find_channel(stream, options):
+    """
+    Find appropriate NS, EW, and Z Channels from a chosen stream.
+    
+    Parameters:
+    stream (obspy.core.stream.Stream):
+        An ObsPy stream object.
+    options (list of str):
+        A list of channel codes.
+    """
+    # Loop through streams and find the associated channel code
+    traces = []
+    for ch in options:
+        traces.extend(stream.select(channel=ch))
+        if len(traces) > 0:
+            return traces # Return first channel code
+        
+    # If none are found
+    return None 
+
+def select_time(wave_dict, 
+                t_start, 
+                duration):
+    
+    """
+    Select a specific time window from seismic waveform data stored in a dictionary without altering the original.
+    Copied from align.py
+
+    Parameters:
+    wave_dict (dict):
+        Dictionary containing seismic waveform data.
+    t_start (UTCDateTime):
+        Start time for the time window.
+    duration (float):
+        Duration of the time window in seconds.
+    
+    Returns:
+    new_dict (dict):
+        Dictionary containing selected seismic waveform data.
+    """
+
+    # Establish timespan
+    t_end = t_start + duration
+
+    # Trim to desired timespan and write to a direction
+    new_dict = defaultdict(list)
+    for station_name in wave_dict:
+        st = Stream(wave_dict[station_name]).copy() # Copy to avoid overwriting data
+        st.trim(starttime=t_start, endtime=t_end, pad=False)
+
+        new_dict[station_name].extend(st.traces)
+
+    return new_dict
+
+def demean_detrend(wave_dict):
+    
+    """
+    Demean and detrend seismic waveform data stored in a dictionary without altering the original.
+
+    Parameters:
+    wave_dict (dict):
+        Dictionary containing seismic waveform data.
+    """
+    # Demean and detrend the data and write to a dictionary
+    new_dict = defaultdict(list)
+
+    for station_name, traces in wave_dict.items():  
+        st = Stream(traces).copy() # Copy to avoid overwriting data
+        st.detrend("demean")
+        st.detrend("linear")
+
+        new_dict[station_name].extend(st.traces)
+    
+    return new_dict
+
+def apply_window(wave_dict, 
+                 type = 'hann',
+                 max_percentage = None,
+                 max_length = 1, 
+                 side = 'both'):
+    
+    """
+    Apply a window function from seismic waveform data stored in a dictionary without altering the original.
+    Copied from align.py
+
+    Parameters:
+    wave_dict (dict):
+        Dictionary containing seismic waveform data.
+    type (str):
+        Type of window function applied. 
+        See the 'Supported Methods' for obspy.core.trace.Trace.taper function for a list of available window functions.
+    max_percentage (float):
+        Decimal percentage of window function applied at an end.
+    max_length (float):
+        Length in seconds of window function applied at an end.
+    side (str):
+        End(s) at which the window function is applied. 
+        Available options are "left", "right", "both".
+    """
+    
+    # Apply the window function and write to a dictionary
+    new_dict = defaultdict(list)
+
+    for station_name, traces in wave_dict.items():  
+        st = Stream(traces).copy() # Copy to avoid overwriting data
+        
+        st.taper(type=type, max_percentage=max_percentage, max_length=max_length, side=side)
+
+        new_dict[station_name].extend(st)
+    
+    return new_dict
+
+def apply_filter(wave_dict, 
+                 filter_type, 
+                 freqmin=None, 
+                 freqmax=None, 
+                 freq=None, 
+                 corners=4, 
+                 zerophase=True):
+    
+    """
+    Apply a filter to seismic waveform data stored in a dictionary without altering the original.
+    Copied from align.py. 
+
+    Parameters:
+    wave_dict (dict):
+        Dictionary containing seismic waveform data.
+    filter_type (str):
+        Type of filter to apply. 
+        Options include 'bandpass', 'bandstop', 'lowpass', 'highpass'.
+        'lowpass_cheby_2', 'lowpass_fir', 'remez_fir' currently unsupported.
+    freqmin (float):
+        Minimum frequency for bandpass/bandstop filters.
+    freqmax (float):
+        Maximum frequency for bandpass/bandstop filters.
+    freq (float):
+        Cutoff frequency for lowpass/highpass filters.
+    corners (int):
+        Number of corners for the filter.
+    zerophase (bool):
+        True/False. If True, apply a zero-phase filter.
+
+    Returns:
+    filtered_dict (dict):
+        Dictionary containing filtered seismic waveform data.
+    """
+
+    # Setup dictionary
+    filtered_dict = {}
+
+    # Loop through and apply filter to the traces
+    for station_name, traces in wave_dict.items():
+        st = Stream([tr.copy() for tr in traces]) # Copy to avoid overwriting data
+
+        if filter_type in ('bandpass', 'bandstop'):
+            st.filter(type=filter_type, 
+                      freqmin=freqmin, 
+                      freqmax=freqmax, 
+                      corners=corners, 
+                      zerophase=zerophase)
+            
+        elif filter_type in ('lowpass', 'highpass'): 
+            st.filter(type=filter_type, 
+                      freq=freq, 
+                      corners=corners, 
+                      zerophase=zerophase)
+            
+        else:
+            raise ValueError(f"Unsupported filter type: {filter_type}") #'lowpass_cheby_2', 'lowpass_fir', 'remez_fir' currently not setup
+
+        filtered_dict[station_name] = st.traces # Write to a dictionary
+        
+    return filtered_dict
+
+def amplitudes(wave_dict,
+               NS_channel,
+               EW_channel,
+               Z_channel):
+    """
+    Calculates the maximum, mean and median amplitudes 
+    of the NS and EW seismic components from a list of wave dictionaries.
+    Parameters:
+        wave_list_dict (list):
+            List of dictionaries containing seismic waveform data 
+            in the form (EW_data, NS_data).
+            Dictionary containing seismic waveform data 
+            in the form (EW_data, NS_data).
+        NS_channel (list of str):
+            Possible channel codes for North-South instrument component.
+        EW_channel (list of str):
+            Possible channel codes for East-West instrument component.
+        NS_channel (list of str):
+            Possible channel codes for North-South instrument component.
+        Z_channel (list of str):
+            Possible channel codes for vertical instrument component.
+    """
+
+    #Storage
+    amplitudes = []
+
+    for i, (station, stream) in enumerate(wave_dict.items(), start=2):
+        print(f"Processing {station}...")
+        st = Stream(stream)
+        st.sort(['channel'])
+        NS = find_channel(st, NS_channel) # Try to find NS channel from function input
+        EW = find_channel(st, EW_channel) # Try to find EW channel from function input
+        Z = find_channel(st, Z_channel)
+
+        # Max amplitude
+        NS_amp = np.max(np.abs(NS)) 
+        EW_amp = np.max(np.abs(EW))
+        Z_amp = np.max(np.abs(Z))   
+        # Mean amplitude
+        NS_mean_amp = np.mean(np.abs(NS))
+        EW_mean_amp = np.mean(np.abs(EW))
+        Z_mean_amp = np.mean(np.abs(Z))
+        # Median amplitude
+        NS_median_amp = np.median(np.abs(NS))
+        EW_median_amp = np.median(np.abs(EW))
+        Z_median_amp = np.median(np.abs(Z))
+        # Store Values
+        amplitudes.append({"station": station,
+                        "NS_max_amp": float(NS_amp),
+                        "EW_max_amp": float(EW_amp),
+                        "Z_max_amp": float(Z_amp),
+                        "NS_mean_amp": float(NS_mean_amp),
+                        "EW_mean_amp": float(EW_mean_amp),
+                        "Z_mean_amp": float(Z_mean_amp),
+                        "NS_median_amp": float(NS_median_amp),
+                        "EW_median_amp": float(EW_median_amp),
+                        "Z_median_amp": float(Z_median_amp)})
+        
+        print(f"Amplitudes for {station}: {amplitudes}")
+        
+    return amplitudes
+
+def amplitude_correction(wave_dict,
+                         NS_channel,
+                         EW_channel,
+                         Z_channel,
+                         NS_correction_factor,
+                         EW_correction_factor,
+                         Z_correction_factor):
+    
+    """
+    Corrects the amplitude of a seismic waveform 
+    from a list of correction factors for each channel.
+    Parameters:
+        wave_list_dict (list):
+            List of dictionaries containing seismic waveform data 
+            in the form (EW_data, NS_data).
+            Dictionary containing seismic waveform data 
+            in the form (EW_data, NS_data).
+        NS_channel (list of str):
+            Possible channel codes for North-South instrument component.
+        EW_channel (list of str):
+            Possible channel codes for East-West instrument component.
+        NS_channel (list of str):
+            Possible channel codes for North-South instrument component.
+        Z_channel (list of str):
+            Possible channel codes for vertical instrument component.
+        NS_correction_factor (list of float):
+            NS amplitude correction factor.
+        EW_correction_factor (list of float):
+            EW amplitude correction factor.
+        Z_correction_factor (list of float):
+            Z amplitude correction factor.
+    """
+    
+    station_list = list(wave_dict.keys())
+    amplitude_corrected_obspy = defaultdict(list) 
+
+    for (station, stream, NS_correct, EW_correct, Z_correct) in zip(station_list, 
+                                                                    wave_dict.values(), 
+                                                                    NS_correction_factor, 
+                                                                    EW_correction_factor, 
+                                                                    Z_correction_factor):
+        print(f"Processing {station}...")
+        st = Stream(stream)
+        st.sort(['channel'])
+        NS = find_channel(st, NS_channel) 
+        EW = find_channel(st, EW_channel) 
+        Z = find_channel(st, Z_channel)
+
+        t_start = min(tr.stats.starttime for tr in st)
+        fs = st[0].stats.sampling_rate
+
+        NS_corrected = NS[0].data * NS_correct if NS else None
+        EW_corrected = EW[0].data * EW_correct if EW else None
+        Z_corrected = Z[0].data * Z_correct if Z else None
+
+        # Create new obspy stream with aligned data
+        st = Stream()
+        NS_name = NS[0].stats.channel if NS else None
+        EW_name = EW[0].stats.channel if EW else None
+        Z_name  = Z[0].stats.channel if Z else None
+        components = {EW_name: EW_corrected, NS_name: NS_corrected, Z_name: Z_corrected}
+        if NS_name is None or EW_name is None or Z_name is None:
+            print(f"Skipping {station}. Missing channel")
+            continue
+
+        for channel, data in components.items():
+            network_name, station_name, *_ = station.split('.')
+            tr = Trace(data=data)
+            tr.stats.network = network_name
+            tr.stats.station = station_name
+            tr.stats.channel = channel
+            tr.stats.starttime = UTC(t_start)
+            tr.stats.sampling_rate = fs
+            st.append(tr)
+
+        amplitude_corrected_obspy[station] = st
+    
+    return amplitude_corrected_obspy
+
+def rotate_stream(wave_dict, 
+                  NS_channel, 
+                  EW_channel, 
+                  Z_channel,
+                  misalignment_angle):
+    """
+    Apply a complex transform to a seismic waveform to correct for rotation errors.
+
+    Parameters:
+    wave_dict (dict):
+        Dictionary containing seismic waveform data.
+    NS_channel (list of str):
+        Possible channel codes for North-South instrument component.
+    EW_channel (list of str):
+        Possible channel codes for East-West instrument component.
+    NS_channel (list of str):
+        Possible channel codes for North-South instrument component.
+    Z_channel (list of str):
+        Possible channel codes for vertical instrument component.
+    misalignment_angle (list of float):
+        The angle in degrees which the waveform is misaligned.
+    """
+
+    station_list = list(wave_dict.keys())
+    aligned_wave_dict = {}
+    aligned_obspy = defaultdict(list)
+
+    for (station, stream, angle) in zip(station_list, wave_dict.values(), misalignment_angle):
+        print(f"Processing {station}...")
+        st = Stream(stream)
+        st.sort(['channel'])
+        NS = find_channel(st, NS_channel) 
+        EW = find_channel(st, EW_channel) 
+        Z = find_channel(st, Z_channel)
+
+        t_start = min(tr.stats.starttime for tr in st)
+        t_end   = max(tr.stats.endtime for tr in st)
+        fs = st[0].stats.sampling_rate
+        npts = int(round((t_end - t_start) * fs))
+
+        # Make each channel a continuous data set by filling in the gaps with NaNs. 
+        # This ensures that the cross correlation and rotation are applied to the entire signal, even if there are gaps in the data.
+        E = np.full(npts, np.nan)
+        N = np.full(npts, np.nan)
+        Z_2 = np.full(npts, np.nan)
+
+        for tr in EW:
+            i0 = int(round((tr.stats.starttime - t_start) * fs))
+            i1 = i0 + len(tr.data)
+            if i1 > npts:
+                i1 = npts
+                data = tr.data[:(i1 - i0)]
+            else:
+                data = tr.data
+
+            E[i0:i1] = data
+
+        for tr in NS:
+            i0 = int(round((tr.stats.starttime - t_start) * fs))
+            i1 = i0 + len(tr.data)
+            if i1 > npts:
+                i1 = npts
+                data = tr.data[:(i1 - i0)]
+            else:
+                data = tr.data
+
+            N[i0:i1] = data
+
+        for tr in Z:
+            i0 = int(round((tr.stats.starttime - t_start) * fs))
+            i1 = i0 + len(tr.data)
+            if i1 > npts:
+                i1 = npts
+                data = tr.data[:(i1 - i0)]
+            else:
+                data = tr.data
+
+            Z_2[i0:i1] = data
+
+        n = min(len(N), len(E), len(Z_2)) 
+        y = N[:n] 
+        x = E[:n] 
+        z = Z_2[:n]
+
+
+        scale = np.nanmax(np.sqrt((x**2)+(y**2)))
+        
+        x = x / scale
+        y = y / scale
+
+        S_k = x + 1j*y
+        S_k_aligned = S_k *np.exp(-1j * np.deg2rad(angle))
+
+        x = np.real(S_k_aligned)
+        y = np.imag(S_k_aligned)
+        
+        #times = NS.times("timestamp")[:n]        
+        aligned_wave_dict[station] =  x, y, z, fs, t_start
+
+        # Create new obspy stream with aligned data
+        st = Stream()
+        NS_name = NS[0].stats.channel if NS else None
+        EW_name = EW[0].stats.channel if EW else None
+        Z_name  = Z[0].stats.channel if Z else None
+        components = {EW_name: x, NS_name: y, Z_name: z}
+        if NS_name is None or EW_name is None or Z_name is None:
+            print(f"Skipping {station}. Missing channel")
+            continue
+
+        for channel, data in components.items():
+            network_name, station_name, *_ = station.split('.')
+            tr = Trace(data=data)
+            tr.stats.network = network_name
+            tr.stats.station = station_name
+            tr.stats.channel = channel
+            tr.stats.starttime = UTC(t_start)
+            tr.stats.sampling_rate = fs
+            st.append(tr)
+
+        aligned_obspy[station] = st
+
+    return aligned_wave_dict, aligned_obspy
+
 def preprocess(wave_dict, 
                window_type = "hann", 
                filter_order = 2, 
@@ -190,6 +628,9 @@ def preprocess(wave_dict,
                apply_window = True, 
                apply_filter = True):
     """
+    ### Experimental Function. ###
+    ### Does not work as well as normal ObsPy Process ###
+
     Applies prepocessing to a list of dictionary seismic waveform data.
     Mean removal and detrending is applied. There is also the option
     to apply a window function and a Butterworth filter.
@@ -278,539 +719,7 @@ def preprocess(wave_dict,
         preprocessed_dict[station] = (EW_v, NS_v, Z_v, fs, t_start)
 
     return preprocessed_dict
-
-def select_time(wave_dict, 
-                t_start, 
-                duration):
-    
-    """
-    Select a specific time window from seismic waveform data stored in a dictionary without altering the original.
-    Adjusted from align.py for use with preprocess() in process.py.
-
-    Parameters:
-    wave_dict (dict):
-        Dictionary containing seismic waveform data.
-    t_start (UTCDateTime):
-        Start time for the time window.
-    duration (float):
-        Duration of the time window in seconds.
-    
-    Returns:
-    new_dict (dict):
-        Dictionary containing selected seismic waveform data.
-    """
-    new_dict = {}
-
-    for station, (EW, NS, Z, fs, starttime) in wave_dict.items():
-
-        # New start and end times
-        dt_start = t_start - starttime
-        new_start = int(dt_start * fs)
-        new_end = int(new_start + duration * fs)
-
-        # Safety bounds (important!)
-        new_start = max(new_start, 0)
-        new_end = min(new_end, len(EW))
-
-        # trim data
-        EW_trim = EW[new_start:new_end]
-        NS_trim = NS[new_start:new_end]
-        Z_trim = Z[new_start:new_end]
-
-        # New start time 
-        new_starttime = starttime + (new_start / fs)
-
-        new_dict[station] = (EW_trim, NS_trim, Z_trim, fs, new_starttime)
-
-    return new_dict
-        
-def amplitudes(wave_dict):
-    """
-    Calculates the maximum, mean and median amplitudes 
-    of the NS and EW seismic components from a list of wave dictionaries.
-    Parameters:
-        wave_list_dict (list):
-            List of dictionaries containing seismic waveform data 
-            in the form (EW_data, NS_data).
-            Dictionary containing seismic waveform data 
-            in the form (EW_data, NS_data).
-    """
-
-    #Storage
-    amplitudes = []
-
-    for station, (EW, NS, Z, fs, t_start) in wave_dict.items():
-        # Max amplitude
-        NS_amp = np.max(np.abs(NS)) 
-        EW_amp = np.max(np.abs(EW))
-        Z_amp = np.max(np.abs(Z))   
-        # Mean amplitude
-        NS_mean_amp = np.mean(np.abs(NS))
-        EW_mean_amp = np.mean(np.abs(EW))
-        Z_mean_amp = np.mean(np.abs(Z))
-        # Median amplitude
-        NS_median_amp = np.median(np.abs(NS))
-        EW_median_amp = np.median(np.abs(EW))
-        Z_median_amp = np.median(np.abs(Z))
-        # Store Values
-        amplitudes.append({"station": station,
-                        "NS_max_amp": float(NS_amp),
-                        "EW_max_amp": float(EW_amp),
-                        "Z_max_amp": float(Z_amp),
-                        "NS_mean_amp": float(NS_mean_amp),
-                        "EW_mean_amp": float(EW_mean_amp),
-                        "Z_mean_amp": float(Z_mean_amp),
-                        "NS_median_amp": float(NS_median_amp),
-                        "EW_median_amp": float(EW_median_amp),
-                        "Z_median_amp": float(Z_median_amp)})
-        
-        print(f"Amplitudes for {station}: {amplitudes}")
-        
-    return amplitudes
-
-def signal_to_noise(wave_dict, 
-                    filtered_dict):
-    """
-    Calculates the noise to signal ratio for the 
-    Z, NS and EW components of seismic data and 
-    stores the results as a dictionary.
-    Parameters:
-    wave_dict (dict):
-        A wave dictionary containing seismic waveform data.
-    filtered_dict (dict):
-        A dictionary containing filtered seismic waveform data.
-    Z_channel (list of str):
-        List of channel codes for the Z component.
-    NS_channel (list of str):
-        List of channel codes for the NS component.
-    EW_channel (list of str):
-        List of channel codes for the EW component.
-    """
-    
-    # Set up seismic waveform data from wave_dict and the filtered data from filtered_dict 
-    # and calculate the noise to signal ratio.
-    # Setup Storage
-    ratio_dict = {}
-    # Loop through wave_dict, find the channels, and store the data in a new dictionary
-    for station, (EW, NS, Z, fs, t_start) in wave_dict.items():
-        print(f"Processing {station}...")
-        # Seismic Waveform Data
-        # Warnings for missing channels.
-        if Z is None:
-            print(f"Warning: Missing Z channel for {station}. Skipping."
-                    "This may cause issues if the Z channel is not missing in wave_dict.")
-        if NS is None:
-            print(f"Warning: Missing NS channel for {station}. Skipping."
-                    "This may cause issues if the NS channel is not missing in wave_dict.")
-        if EW is None:
-            print(f"Warning: Missing EW channel for {station}. Skipping."
-                    "This may cause issues if the EW channel is not missing in wave_dict.")
-
-        # Filtered Waveform Data
-        for i, (EW_filt, NS_filt, Z_filt, fs_filt, t_start_filt) in filtered_dict.items():
-                # Warnings for missing channels.
-            if Z_filt is None:
-                print(f"Warning: Missing Z channel for filtered {station}. Skipping."
-                        "This may cause issues if the Z channel is not missing in filtered_dict.")
-            if NS_filt is None:
-                print(f"Warning: Missing NS channel for filtered {station}. Skipping."
-                        "This may cause issues if the NS channel is not missing in filtered_dict.")
-            if EW_filt is None:
-                print(f"Warning: Missing EW channel for filtered {station}. Skipping."
-                        "This may cause issues if the EW channel is not missing in filtered_dict.")
-
-            # Calculate noise to signal ratio for each station and component, and store in a new dictionary.
-            if Z is not None and Z_filt is not None:
-                noise_Z = Z - Z_filt
-                signal_P_Z = np.mean(Z_filt ** 2)
-                noise_P_Z = np.mean(noise_Z ** 2)
-                ratio_Z = 10 * np.log10(signal_P_Z / noise_P_Z)
-            else:
-                ratio_Z = None
-                print(f"No Data for Z component in {station}. Skipping.")
-            # NS component
-            if NS is not None and NS_filt is not None:
-                noise_NS = NS - NS_filt
-                signal_P_NS = np.mean(NS_filt ** 2)
-                noise_P_NS = np.mean(noise_NS ** 2)
-                ratio_NS = 10 * np.log10(signal_P_NS / noise_P_NS)
-            else:
-                ratio_NS = None
-                print(f"No Data for NS component in {station}. Skipping.")
-            # EW component
-            if EW is not None and EW_filt is not None:
-                noise_EW = EW - EW_filt
-                signal_P_EW = np.mean(EW_filt ** 2)
-                noise_P_EW = np.mean(noise_EW ** 2)
-                ratio_EW = 10 * np.log10(signal_P_EW / noise_P_EW)
-            else:
-                ratio_EW = None
-                print(f"No Data for EW component in {station}. Skipping.")
-            # Store the ratios in a new dictionary
-            ratio_dict[station] = {"Z": float(ratio_Z) if ratio_Z is not None else None,
-                                "NS": float(ratio_NS) if ratio_NS is not None else None,
-                                "EW": float(ratio_EW) if ratio_EW is not None else None}
-
-    return ratio_dict
-
-def cc_correction(ref_dict, 
-                  target_dict, 
-                  col_n=4,
-                  underlying_plot='reference', 
-                  png_title = 'default', 
-                  save_png=True):
-    """
-    Create polar plots with cross-correlation correction to a reference station from seismic waveform data stored in a dictionary.
-    Adapted for use with prepocess() from align.py.
-    Parameters:
-    ref_dict (dict):
-        Dictionary containing seismic waveform data for a reference station.
-    target_dict (dict):
-        Dictionary containing seismic waveform data for target stations.
-    col_n (int):
-        Number of columns in the plot grid.
-    underlying_plot (str):
-        Choose what is plotted with the aligned target station signals.
-        'reference' for reference station
-        'original' for original target station signal
-        Any other input skips the underlying plot.
-    png_title (str):
-        Title for the saved PNG file. If 'default', the file is named 'cross_correlation.png'.
-    save_png (bool):
-        True/False. If True, save each plot as a PNG file.
-    """
-    # Calculate number of rows needed for figure. Set number of columns in function call
-    n_plots = len(target_dict) + 1
-    row_n = int(np.ceil(n_plots / col_n)) 
-
-    # Prepare Figure
-    fig = plt.figure(figsize=(6*col_n, 6*row_n))
-
-    # Setup reference station for first subplot
-    ref_station = list(ref_dict.keys())[0]
-
-    ref_NS = ref_dict[ref_station][1] 
-    ref_EW = ref_dict[ref_station][0]
-
-    if ref_NS is None or ref_EW is None:
-        raise ValueError("Reference station missing required NS/EW channels")
-        
-    print(f"Processing reference station: {ref_station}...")
-
-    # Ensure x and y data is of same length
-    n_ref = min(len(ref_NS.data), len(ref_EW.data))
-    y_ref = np.asarray(ref_NS)[:n_ref]
-    x_ref = np.asarray(ref_EW)[:n_ref]
-
-    # Apply peak normalization
-    scale_ref = np.max(np.sqrt(x_ref**2 + y_ref**2))
-    if scale_ref == 0:
-        print(f"{ref_station}: zero amplitude signal.")
-        
-    ref_EW_norm = x_ref / scale_ref
-    ref_NS_norm = y_ref / scale_ref
-
-    # Gather polar coordinates 
-    theta_ref = np.arctan2(ref_NS_norm,ref_EW_norm)
-    r_ref = np.sqrt(ref_NS_norm**2 + ref_EW_norm**2)
-
-    # Plot reference station
-    ax = fig.add_subplot(row_n, col_n, 1, projection="polar")
-    ax.plot(theta_ref,
-            r_ref, 
-            alpha=0.65, 
-            color = 'red',
-            label=f"Reference Station: {ref_station}")
-    
-    # Legend
-    ax.legend(loc="upper right", 
-              bbox_to_anchor=(1.3, 1.1), 
-              fontsize=8,
-              frameon=True)
-    
-    # Cardinal directions
-    ax.set_rmax(1.2)
-    cardinals = {
-                "E": (0, 1.05 * 1.05),
-                "N": (np.pi / 2, 1.05),
-                "W": (np.pi, 1.05 * 1.05),
-                "S": (3 * np.pi / 2, 1.05)}
-
-    offset = 0.385 
-    
-    for label, (angle, radius) in cardinals.items():
-        ax.text(angle,
-                radius + offset,
-                label,
-                ha="center",
-                va="center",
-                fontsize=12,
-                fontweight="bold",
-                clip_on=False)
-
-    time = ref_dict[ref_station][4]
-    timespan = len(ref_NS.data) / ref_dict[ref_station][3]
-
-    ax.set_title(f"Horizontal Particle Motion Plot \n for {ref_station} at {time} for {timespan} seconds", y=1.15)    
-
-    # Loop through stations, cross correlate, and plot
-    for i, (station, stream) in enumerate(target_dict.items(), start=2):
-            print(f"Processing {station}...")
-            
-            target_NS = target_dict[station][1] 
-            target_EW = target_dict[station][0]
-
-            if target_NS is None or target_EW is None:
-                print(f"{station}: missing required channels, skipping.")
-                continue
-
-            # Resample if required
-            ref_fs = ref_dict[ref_station][3]
-            target_fs = target_dict[station][3]
-
-            if ref_fs != target_fs:
-                print(f"{station}: resampling from {target_fs} Hz → {ref_fs} Hz")
-
-                n_samples = int(len(target_NS.data) * ref_fs / target_fs)
-
-                target_NS_resampled = resample(np.asarray(target_NS), n_samples)
-                target_EW_resampled = resample(np.asarray(target_EW), n_samples)
-                
-            else:
-                target_NS_resampled = np.asarray(target_NS)
-                target_EW_resampled = np.asarray(target_EW)
-
-            # Match channel lengths
-            n = min(len(ref_NS), len(ref_EW), len(target_NS_resampled), len(target_EW_resampled))
-            x1 = ref_EW[:n]
-            y1 = ref_NS[:n]
-            x2 = target_EW_resampled[:n]
-            y2 = target_NS_resampled[:n]
-
-            # Apply peak normalization
-            scale1 = np.max(np.sqrt((x1**2) + (y1**2)))
-            x1 = x1 / scale1
-            y1 = y1 / scale1
-
-            scale2 = np.max(np.sqrt((x2**2) + (y2**2)))
-            x2 = x2 / scale2
-            y2 = y2 / scale2
-        
-            # Investigate cross correlation
-            # Method from Misalignment Angle Correction of Borehole 
-            # Seismic Sensors: The Case Study of
-            # the Collalto Seismic Network
-            # Diez Zaldívar
-            # 2016
-            # For full derivation, see the paper above. Only vital steps are conducted here.
-            
-            S_r = x1 +1j*y1 # Reference waveform
-            S_k = x2 +1j*y2 # Target waveform
-
-            # m = (G^H G)^-1 G^H d)
-            # G = S_k, H is conjugate transpose matrix, d = S_r
-            # => m_k = (S_k^H * S_k)^-1 *S_k^H * S_r
-            # => m_k = sum(|S_k|^2)^-1 * sum(conj(S_k) *S_r)
-            m_k = np.sum(np.conj(S_k)* S_r)/np.sum(np.abs(S_k)**2)
-            phi = np.arctan2(np.imag(m_k), np.real(m_k)) # angle between the target and reference waveform
-
-            # Rotate entire signal
-            S_k_aligned = S_k * np.exp(1j *phi)
-            x2_aligned =  np.real(S_k_aligned) # EW componet
-            y2_aligned = np.imag(S_k_aligned) # NS component
-
-            # Gather polar coordinates
-            theta_aligned = np.arctan2(y2_aligned, x2_aligned)
-            r_aligned = np.sqrt(x2_aligned**2 + y2_aligned**2)
-
-            # Compute rotation angle
-            angle_diff = np.rad2deg(phi)
-            if angle_diff > 180:
-                angle_diff = angle_diff - 360
-
-            print(f"Rotation required for best correlation at {station}: {angle_diff:.2f}°")
-            
-
-            # Create polar plot
-            ax = fig.add_subplot(row_n, col_n, i, projection="polar")
-            if underlying_plot == 'reference':
-                ax.plot(theta_ref,
-                        r_ref, 
-                        alpha=0.50, 
-                        color = 'red',
-                        label=f"Reference Station: {ref_station}")
-            elif underlying_plot == 'original':
-                theta_original = np.arctan2(y2,x2)
-                r_original = np.sqrt(x2**2 + y2**2)
-                ax.plot(theta_original, 
-                        r_original, 
-                        alpha=0.30, 
-                        color = 'darkmagenta',
-                        label="Uncorrected Target Station")
-            ax.set_rlabel_position(5)
-
-            ax.plot(theta_aligned, 
-                    r_aligned, 
-                    alpha=0.65, 
-                    color = 'darkmagenta',
-                    label="Corrected Target Station")
-                
-            # Legend
-            ax.legend(
-            loc="upper right",
-            bbox_to_anchor=(1.3, 1.1),
-            fontsize=8,
-            frameon=True)
-
-            # Add cardinal direction annotations
-            ax.set_rmax(1.2)
-            cardinals = {
-                "E": (0, 1.05 * 1.05),
-                "N": (np.pi / 2, 1.05),
-                "W": (np.pi, 1.05 * 1.05),
-                "S": (3 * np.pi / 2, 1.05)}
-
-            offset = 0.385  # Offset for cardinal labels
-
-            for label, (angle, radius) in cardinals.items():
-                ax.text(
-                    angle,
-                    radius + offset,
-                    label,
-                    ha="center",
-                    va="center",
-                    fontsize=12,
-                    fontweight="bold",
-                    clip_on=False)
-                
-            # For title
-            time = target_dict[station][4]
-            timespan = len(target_NS.data) / target_dict[station][3]
-            
-            ax.set_title(f"Horizontal Particle Motion Plot \n for {station} at {time} for {timespan} seconds", y=1.15)    
-
-    #Display
-    plt.tight_layout()
-    if save_png == True:
-        if png_title == 'default':
-            plt.savefig(f'cross_correlation.png', dpi=300)
-        else:
-            plt.savefig(f'{png_title}.png', dpi=300)
-
-    plt.show()       
-
-def tabulate_cc_correction(ref_dict, 
-                           target_dict,
-                           location='default_title'):
-    
-    """
-    Tabulate correction angles for sensors from seismic waveform data stored in a dictionary.
-    
-    Parameters:
-    wave_dict (dict):
-        Dictionary containing seismic waveform data for the reference station.
-    target_dict (dict):
-        Dictionary containing seismic waveform data.  
-    location (str):
-        Title/location for the output table and CSV file.
-
-    Returns:
-    df (DataFrame):
-        DataFrame containing peak angles for each station.
-    """
-    
-    # Setup up table storage
-    angle_results = []  
-    
-    # Setup reference station for first subplot
-    ref_station = list(ref_dict.keys())[0]
-
-    ref_NS = ref_dict[ref_station][1] 
-    ref_EW = ref_dict[ref_station][0]
-
-    if ref_NS is None or ref_EW is None:
-        raise ValueError("Reference station missing required NS/EW channels")
-    
-    print(f"Processing reference station: {ref_station}...")
-
-    # Loop through stations, cross correlate, and tabulate
-    for i, (station, stream) in enumerate(target_dict.items(), start=2):
-        print(f"Processing {station}...")
-            
-        target_NS = target_dict[station][1] 
-        target_EW = target_dict[station][0]
-        
-        if target_NS is None or target_EW is None:
-            print(f"{station}: missing required channels")
-            continue
-        
-        # Resample if required
-        ref_fs = ref_dict[ref_station][3]
-        target_fs = target_dict[station][3]
-
-        if ref_fs != target_fs:
-            print(f"{station}: resampling from {target_fs} Hz → {ref_fs} Hz")
-
-            n_samples = int(len(target_NS.data) * ref_fs / target_fs)
-
-            target_NS_resampled = resample(np.asarray(target_NS), n_samples)
-            target_EW_resampled = resample(np.asarray(target_EW), n_samples)
-            
-        else:
-            target_NS_resampled = np.asarray(target_NS)
-            target_EW_resampled = np.asarray(target_EW)
-
-        # Match channel lengths
-        n = min(len(ref_NS), len(ref_EW), len(target_NS_resampled), len(target_EW_resampled))
-        x1 = ref_EW[:n]
-        y1 = ref_NS[:n]
-        x2 = target_EW_resampled[:n]
-        y2 = target_NS_resampled[:n]
-
-
-        # Apply peak normalization
-            
-        scale1 = np.max(np.sqrt((x1**2) + (y1**2)))
-        x1 = x1 / scale1
-        y1 = y1 / scale1
-
-        scale2 = np.max(np.sqrt((x2**2) + (y2**2)))
-        x2 = x2 / scale2
-        y2 = y2 / scale2
-        
-        # Investigate cross correlation
-        # Method from Misalignment Angle Correction of Borehole 
-        # Seismic Sensors: The Case Study of
-        # the Collalto Seismic Network
-        # Diez Zaldívar
-        # 2016
-        # For full derivation, see the paper above. Only vital steps are conducted here.
-        
-        S_r = x1 +1j*y1 # Reference waveform
-        S_k = x2 +1j*y2 # Target waveform
-
-        # m = (G^H G)^-1 G^H d)
-        # G = S_k, H is conjugate transpose matrix, d = S_r
-        # => m_k = (S_k^H * S_k)^-1 *S_k^H * S_r
-        # => m_k = sum(|S_k|^2)^-1 * sum(conj(S_k) *S_r)
-        m_k = np.sum(np.conj(S_k)* S_r)/np.sum(np.abs(S_k)**2)
-        phi = np.arctan2(np.imag(m_k), np.real(m_k)) # angle between the target and reference waveform
-
-        # Compute rotation angle
-        angle_diff = np.rad2deg(phi)
-        if angle_diff > 180:
-            angle_diff = angle_diff - 360
-
-        # Store results in table
-        angle_results.append({"Station": station,"Angle Correction": f'{angle_diff:.2f}'})
-
-    # Tabulate
-    time = target_dict[station][4]
-    df = pd.DataFrame(angle_results)
-    df.to_csv(f'seismic_directions_{location}.csv', index=False)
-    print(f"Alignments for {location} Earthquake @ {time} (UTC):")
-
-    return df
+      
 
 def ppsd(wave_dict, 
          metadata, 
@@ -893,77 +802,3 @@ def ppsd(wave_dict,
             ppsd_Z.plot(max_percentage=max_percentage, 
                        filename=title if save_png == True else None, 
                        show=True if show_plot == True else False)
-
-def find_channel(stream, options):
-    """
-    Find appropriate NS and EW Channels from a chosen stream.
-    
-    Parameters:
-    stream (obspy.core.stream.Stream):
-        An ObsPy stream object.
-    options (list of str):
-        A list of channel codes.
-    """
-    # Loop through streams and find the associated channel code
-    traces = []
-    for ch in options:
-        traces.extend(stream.select(channel=ch))
-        if len(traces) > 0:
-            return traces # Return first channel code
-        
-    # If none are found
-    return None 
-
-def amplitude_correction(wave_dict,
-                         NS_channel,
-                         EW_channel,
-                         Z_channel,
-                         NS_correction_factor,
-                         EW_correction_factor,
-                         Z_correction_factor):
-    
-    station_list = list(wave_dict.keys())
-    amplitude_corrected_obspy = defaultdict(list) 
-
-    for (station, stream, NS_correct, EW_correct, Z_correct) in zip(station_list, 
-                                                                    wave_dict.values(), 
-                                                                    NS_correction_factor, 
-                                                                    EW_correction_factor, 
-                                                                    Z_correction_factor):
-        print(f"Processing {station}...")
-        st = Stream(stream)
-        st.sort(['channel'])
-        NS = find_channel(st, NS_channel) 
-        EW = find_channel(st, EW_channel) 
-        Z = find_channel(st, Z_channel)
-
-        t_start = min(tr.stats.starttime for tr in st)
-        fs = st[0].stats.sampling_rate
-
-        NS_corrected = NS[0].data * NS_correct if NS else None
-        EW_corrected = EW[0].data * EW_correct if EW else None
-        Z_corrected = Z[0].data * Z_correct if Z else None
-
-        # Create new obspy stream with aligned data
-        st = Stream()
-        NS_name = NS[0].stats.channel if NS else None
-        EW_name = EW[0].stats.channel if EW else None
-        Z_name  = Z[0].stats.channel if Z else None
-        components = {EW_name: EW_corrected, NS_name: NS_corrected, Z_name: Z_corrected}
-        if NS_name is None or EW_name is None or Z_name is None:
-            print(f"Skipping {station}. Missing channel")
-            continue
-
-        for channel, data in components.items():
-            network_name, station_name, *_ = station.split('.')
-            tr = Trace(data=data)
-            tr.stats.network = network_name
-            tr.stats.station = station_name
-            tr.stats.channel = channel
-            tr.stats.starttime = UTC(t_start)
-            tr.stats.sampling_rate = fs
-            st.append(tr)
-
-        amplitude_corrected_obspy[station] = st
-    
-    return amplitude_corrected_obspy
