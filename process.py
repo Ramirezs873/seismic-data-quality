@@ -201,11 +201,14 @@ def find_channel(stream, options):
 
 def select_time(wave_dict, 
                 t_start, 
-                duration):
+                duration,
+                save_mseed=False,
+                config=None,
+                read_file=True,
+                filename='default'):
     
     """
     Select a specific time window from seismic waveform data stored in a dictionary without altering the original.
-    Copied from align.py
 
     Parameters:
     wave_dict (dict):
@@ -214,26 +217,62 @@ def select_time(wave_dict,
         Start time for the time window.
     duration (float):
         Duration of the time window in seconds.
-    
+    save_mseed (bool):
+        True/False. True to save as mseed file.
+    config (dict):
+        Information from a config file containing the local "seismic_data_path".
+    read_file (bool):
+        True/False. True to switch on file checking.
+    filename (str):
+        Title of saved mseed file.
     Returns:
     new_dict (dict):
         Dictionary containing selected seismic waveform data.
     """
 
-    # Establish timespan
-    t_end = t_start + duration
+    # Path 
+    base_path = Path(config["seismic_data_path"]) if config else Path(".")
+    base_path.mkdir(parents=True, exist_ok=True)
+    filetitle = f"{filename}_{duration}s_trim"
+    file_path = (base_path / filetitle).with_suffix(".mseed")
 
-    # Trim to desired timespan and write to a direction
-    new_dict = defaultdict(list)
-    for station_name in wave_dict:
-        st = Stream(wave_dict[station_name]).copy() # Copy to avoid overwriting data
-        st.trim(starttime=t_start, endtime=t_end, pad=False)
+    # Read file if it exists
+    if file_path.exists():
+        if read_file == True:
+            print(f"Reading existing file: {file_path}")
+            stream = read(str(file_path))
+            new_dict = defaultdict(list)
+            for tr in stream:
+                new_dict[tr.stats.station].append(tr)
 
-        new_dict[station_name].extend(st.traces)
+    else:
+        # Establish timespan
+        t_end = t_start + duration
+        streams = []
+        # Trim to desired timespan and write to a direction
+        new_dict = defaultdict(list)
+        for station_name in wave_dict:
+            st = Stream(wave_dict[station_name]).copy() # Copy to avoid overwriting data
+            st.trim(starttime=t_start, endtime=t_end, pad=False)
+            streams.append(st)
+            new_dict[station_name].extend(st.traces)
+
+        # Save as mseed file
+        if save_mseed == True:
+            merged_stream = streams[0].copy() # Copy to avoid overwriting data
+            for st in streams[1:]:
+                merged_stream += st
+            merged_stream.merge()
+
+            merged_stream.write(f'{str(file_path)}', format="MSEED")
 
     return new_dict
 
-def demean_detrend(wave_dict):
+def demean_detrend(wave_dict,
+                   save_mseed=False,
+                    config=None,
+                    read_file=True,
+                    filename='default'):
     
     """
     Demean and detrend seismic waveform data stored in a dictionary without altering the original.
@@ -241,16 +280,52 @@ def demean_detrend(wave_dict):
     Parameters:
     wave_dict (dict):
         Dictionary containing seismic waveform data.
+    save_mseed (bool):
+        True/False. True to save as mseed file.
+    config (dict):
+        Information from a config file containing the local "seismic_data_path".
+    read_file (bool):
+        True/False. True to switch on file checking.
+    filename (str):
+        Title of saved mseed file.
+    Returns:
+    new_dict (dict):
+        Dictionary containing demeaned and detrended seismic waveform data.
     """
-    # Demean and detrend the data and write to a dictionary
-    new_dict = defaultdict(list)
+    # Path 
+    base_path = Path(config["seismic_data_path"]) if config else Path(".")
+    base_path.mkdir(parents=True, exist_ok=True)
+    filetitle = f"{filename}_dnd"
+    file_path = (base_path / filetitle).with_suffix(".mseed")
 
-    for station_name, traces in wave_dict.items():  
-        st = Stream(traces).copy() # Copy to avoid overwriting data
-        st.detrend("demean")
-        st.detrend("linear")
+    # Read file if it exists
+    if file_path.exists():
+        if read_file == True:
+            print(f"Reading existing file: {file_path}")
+            stream = read(str(file_path))
+            new_dict = defaultdict(list)
+            for tr in stream:
+                new_dict[tr.stats.station].append(tr)
+    else:
+        # Demean and detrend the data and write to a dictionary
+        new_dict = defaultdict(list)
+        streams = []
 
-        new_dict[station_name].extend(st.traces)
+        for station_name, traces in wave_dict.items():  
+            st = Stream(traces).copy() # Copy to avoid overwriting data
+            st.detrend("demean")
+            st.detrend("linear")
+            streams.append(st)
+            new_dict[station_name].extend(st.traces)
+            
+        # Save as mseed file
+        if save_mseed == True:
+            merged_stream = streams[0].copy() # Copy to avoid overwriting data
+            for st in streams[1:]:
+                merged_stream += st
+            merged_stream.merge()
+
+            merged_stream.write(f'{str(file_path)}', format="MSEED")
     
     return new_dict
 
@@ -258,11 +333,14 @@ def apply_window(wave_dict,
                  type = 'hann',
                  max_percentage = None,
                  max_length = 1, 
-                 side = 'both'):
+                 side = 'both',
+                 save_mseed=False,
+                 config=None,
+                 read_file=True,
+                 filename='default'):
     
     """
     Apply a window function from seismic waveform data stored in a dictionary without altering the original.
-    Copied from align.py
 
     Parameters:
     wave_dict (dict):
@@ -277,18 +355,54 @@ def apply_window(wave_dict,
     side (str):
         End(s) at which the window function is applied. 
         Available options are "left", "right", "both".
+    save_mseed (bool):
+        True/False. True to save as mseed file.
+    config (dict):
+        Information from a config file containing the local "seismic_data_path".
+    read_file (bool):
+        True/False. True to switch on file checking.
+    filename (str):
+        Title of saved mseed file.
+    Returns:
+    new_dict (dict):
+        Dictionary containing tapered seismic waveform data.
     """
-    
-    # Apply the window function and write to a dictionary
-    new_dict = defaultdict(list)
 
-    for station_name, traces in wave_dict.items():  
-        st = Stream(traces).copy() # Copy to avoid overwriting data
+    # Path 
+    base_path = Path(config["seismic_data_path"]) if config else Path(".")
+    base_path.mkdir(parents=True, exist_ok=True)
+    filetitle = f"{filename}_{type}"
+    file_path = (base_path / filetitle).with_suffix(".mseed")
+
+    # Read file if it exists
+    if file_path.exists():
+        if read_file == True:
+            print(f"Reading existing file: {file_path}")
+            stream = read(str(file_path))
+            new_dict = defaultdict(list)
+            for tr in stream:
+                new_dict[tr.stats.station].append(tr)
+
+    else:
+        # Apply the window function and write to a dictionary
+        new_dict = defaultdict(list)
+        streams = []
+        for station_name, traces in wave_dict.items():  
+            st = Stream(traces).copy() # Copy to avoid overwriting data
+            
+            st.taper(type=type, max_percentage=max_percentage, max_length=max_length, side=side)
+            streams.append(st)
+            new_dict[station_name].extend(st)
         
-        st.taper(type=type, max_percentage=max_percentage, max_length=max_length, side=side)
+        # Save as mseed file
+        if save_mseed == True:
+            merged_stream = streams[0].copy() # Copy to avoid overwriting data
+            for st in streams[1:]:
+                merged_stream += st
+            merged_stream.merge()
 
-        new_dict[station_name].extend(st)
-    
+            merged_stream.write(f'{str(file_path)}', format="MSEED")
+
     return new_dict
 
 def apply_filter(wave_dict, 
@@ -297,11 +411,14 @@ def apply_filter(wave_dict,
                  freqmax=None, 
                  freq=None, 
                  corners=4, 
-                 zerophase=True):
-    
+                 zerophase=True,
+                 save_mseed=False,
+                 config=None,
+                 read_file=True,
+                 filename='default'):
+
     """
     Apply a filter to seismic waveform data stored in a dictionary without altering the original.
-    Copied from align.py. 
 
     Parameters:
     wave_dict (dict):
@@ -320,37 +437,73 @@ def apply_filter(wave_dict,
         Number of corners for the filter.
     zerophase (bool):
         True/False. If True, apply a zero-phase filter.
+    save_mseed (bool):
+        True/False. True to save as mseed file.
+    config (dict):
+        Information from a config file containing the local "seismic_data_path".
+    read_file (bool):
+        True/False. True to switch on file checking.
+    filename (str):
+        Title of saved mseed file.
 
     Returns:
     filtered_dict (dict):
         Dictionary containing filtered seismic waveform data.
     """
 
-    # Setup dictionary
-    filtered_dict = {}
+    # Path 
+    base_path = Path(config["seismic_data_path"]) if config else Path(".")
+    base_path.mkdir(parents=True, exist_ok=True)
+    filetitle = f"{filename}_{filter_type}"
+    file_path = (base_path / filetitle).with_suffix(".mseed")
 
-    # Loop through and apply filter to the traces
-    for station_name, traces in wave_dict.items():
-        st = Stream([tr.copy() for tr in traces]) # Copy to avoid overwriting data
+    # Read file if it exists
+    if file_path.exists():
+        if read_file == True:
+            print(f"Reading existing file: {file_path}")
+            stream = read(str(file_path))
+            filtered_dict = defaultdict(list)
+            for tr in stream:
+                filtered_dict[tr.stats.station].append(tr)
 
-        if filter_type in ('bandpass', 'bandstop'):
-            st.filter(type=filter_type, 
-                      freqmin=freqmin, 
-                      freqmax=freqmax, 
-                      corners=corners, 
-                      zerophase=zerophase)
+    else:
             
-        elif filter_type in ('lowpass', 'highpass'): 
-            st.filter(type=filter_type, 
-                      freq=freq, 
-                      corners=corners, 
-                      zerophase=zerophase)
-            
-        else:
-            raise ValueError(f"Unsupported filter type: {filter_type}") #'lowpass_cheby_2', 'lowpass_fir', 'remez_fir' currently not setup
+        # Setup dictionary
+        filtered_dict = defaultdict(list)
+        streams = []
+        # Loop through and apply filter to the traces
+        for station_name, traces in wave_dict.items():
+            st = Stream([tr.copy() for tr in traces]) # Copy to avoid overwriting data
 
-        filtered_dict[station_name] = st.traces # Write to a dictionary
+            if filter_type in ('bandpass', 'bandstop'):
+                st.filter(type=filter_type, 
+                        freqmin=freqmin, 
+                        freqmax=freqmax, 
+                        corners=corners, 
+                        zerophase=zerophase)
+                streams.append(st)
+
+            elif filter_type in ('lowpass', 'highpass'): 
+                st.filter(type=filter_type, 
+                        freq=freq, 
+                        corners=corners, 
+                        zerophase=zerophase)
+                streams.append(st)
+
+            else:
+                raise ValueError(f"Unsupported filter type: {filter_type}") #'lowpass_cheby_2', 'lowpass_fir', 'remez_fir' currently not setup
+
+            filtered_dict[station_name] = st.traces # Write to a dictionary
         
+        # Save as mseed file
+        if save_mseed == True:
+            merged_stream = streams[0].copy() # Copy to avoid overwriting data
+            for st in streams[1:]:
+                merged_stream += st
+            merged_stream.merge()
+
+            merged_stream.write(f'{str(file_path)}', format="MSEED")
+
     return filtered_dict
 
 def amplitudes(wave_dict,
@@ -421,7 +574,11 @@ def amplitude_correction(wave_dict,
                          Z_channel,
                          NS_correction_factor,
                          EW_correction_factor,
-                         Z_correction_factor):
+                         Z_correction_factor,
+                         save_mseed=False,
+                         config=None,
+                         read_file=True,
+                         filename='default'):
     
     """
     Corrects the amplitude of a seismic waveform 
@@ -446,51 +603,91 @@ def amplitude_correction(wave_dict,
             EW amplitude correction factor.
         Z_correction_factor (list of float):
             Z amplitude correction factor.
-    """
+        save_mseed (bool):
+            True/False. True to save as mseed file.
+        config (dict):
+            Information from a config file containing the local "seismic_data_path".
+        read_file (bool):
+            True/False. True to switch on file checking.
+        filename (str):
+            Title of saved mseed file.
+        Returns:
+        amplitude_corrected_obspy (dict):
+            Dictionary containing amplitude corrected seismic waveform data.
+        """
     
-    station_list = list(wave_dict.keys())
-    amplitude_corrected_obspy = defaultdict(list) 
+    # Path 
+    base_path = Path(config["seismic_data_path"]) if config else Path(".")
+    base_path.mkdir(parents=True, exist_ok=True)
+    filetitle = f"{filename}_amp_corr"
+    file_path = (base_path / filetitle).with_suffix(".mseed")
 
-    for (station, stream, NS_correct, EW_correct, Z_correct) in zip(station_list, 
-                                                                    wave_dict.values(), 
-                                                                    NS_correction_factor, 
-                                                                    EW_correction_factor, 
-                                                                    Z_correction_factor):
-        print(f"Processing {station}...")
-        st = Stream(stream)
-        st.sort(['channel'])
-        NS = find_channel(st, NS_channel) 
-        EW = find_channel(st, EW_channel) 
-        Z = find_channel(st, Z_channel)
+    # Read file if it exists
+    if file_path.exists():
+        if read_file == True:
+            print(f"Reading existing file: {file_path}")
+            stream = read(str(file_path))
+            amplitude_corrected_obspy = defaultdict(list)
+            for tr in stream:
+                amplitude_corrected_obspy[tr.stats.station].append(tr)
+    else:
+            
+        station_list = list(wave_dict.keys())
+        amplitude_corrected_obspy = defaultdict(list) 
+        streams = []
 
-        t_start = min(tr.stats.starttime for tr in st)
-        fs = st[0].stats.sampling_rate
+        for (stat, stream, NS_correct, EW_correct, Z_correct) in zip(station_list, 
+                                                                        wave_dict.values(), 
+                                                                        NS_correction_factor, 
+                                                                        EW_correction_factor, 
+                                                                        Z_correction_factor):
+            print(f"Processing {stat}...")
+            st = Stream(stream)
+            st.sort(['channel'])
+            NS = find_channel(st, NS_channel) 
+            EW = find_channel(st, EW_channel) 
+            Z = find_channel(st, Z_channel)
 
-        NS_corrected = NS[0].data * NS_correct if NS else None
-        EW_corrected = EW[0].data * EW_correct if EW else None
-        Z_corrected = Z[0].data * Z_correct if Z else None
+            t_start = min(tr.stats.starttime for tr in st)
+            fs = st[0].stats.sampling_rate
 
-        # Create new obspy stream with aligned data
-        st = Stream()
-        NS_name = NS[0].stats.channel if NS else None
-        EW_name = EW[0].stats.channel if EW else None
-        Z_name  = Z[0].stats.channel if Z else None
-        components = {EW_name: EW_corrected, NS_name: NS_corrected, Z_name: Z_corrected}
-        if NS_name is None or EW_name is None or Z_name is None:
-            print(f"Skipping {station}. Missing channel")
-            continue
+            NS_corrected = NS[0].data * NS_correct if NS else None
+            EW_corrected = EW[0].data * EW_correct if EW else None
+            Z_corrected = Z[0].data * Z_correct if Z else None
 
-        for channel, data in components.items():
-            network_name, station_name, *_ = station.split('.')
-            tr = Trace(data=data)
-            tr.stats.network = network_name
-            tr.stats.station = station_name
-            tr.stats.channel = channel
-            tr.stats.starttime = UTC(t_start)
-            tr.stats.sampling_rate = fs
-            st.append(tr)
+            # Create new obspy stream with aligned data
+            st = Stream()
+            NS_name = NS[0].stats.channel if NS else None
+            EW_name = EW[0].stats.channel if EW else None
+            Z_name  = Z[0].stats.channel if Z else None
+            network_name = wave_dict[stat][0].stats.network 
+            station_name = wave_dict[stat][0].stats.station
 
-        amplitude_corrected_obspy[station] = st
+            
+            components = {EW_name: EW_corrected, NS_name: NS_corrected, Z_name: Z_corrected}
+            if NS_name is None or EW_name is None or Z_name is None:
+                print(f"Skipping {stat}. Missing channel")
+                continue
+
+            for channel, data in components.items():
+                tr = Trace(data=data)
+                tr.stats.network = network_name
+                tr.stats.station = station_name
+                tr.stats.channel = channel
+                tr.stats.starttime = UTC(t_start)
+                tr.stats.sampling_rate = fs
+                st.append(tr)
+            streams.append(st)
+            amplitude_corrected_obspy[stat] = st
+        
+        # Save as mseed file
+        if save_mseed == True:
+            merged_stream = streams[0].copy() # Copy to avoid overwriting data
+            for st in streams[1:]:
+                merged_stream += st
+            merged_stream.merge()
+
+            merged_stream.write(f'{str(file_path)}', format="MSEED")
     
     return amplitude_corrected_obspy
 
@@ -498,7 +695,12 @@ def rotate_stream(wave_dict,
                   NS_channel, 
                   EW_channel, 
                   Z_channel,
-                  misalignment_angle):
+                  misalignment_angle,
+                  save_mseed=False,
+                  config=None,
+                  read_file=True,
+                  filename='default'):
+    
     """
     Apply a complex transform to a seismic waveform to correct for rotation errors.
 
@@ -515,107 +717,148 @@ def rotate_stream(wave_dict,
         Possible channel codes for vertical instrument component.
     misalignment_angle (list of float):
         The angle in degrees which the waveform is misaligned.
+    save_mseed (bool):
+        True/False. True to save as mseed file.
+    config (dict):
+        Information from a config file containing the local "seismic_data_path".
+    read_file (bool):
+        True/False. True to switch on file checking.
+    filename (str):
+        Title of saved mseed file.
+    Returns:
+    aligned_obspy (dict):
+        Dictionary containing rotation corrected seismic waveform data.
     """
 
-    station_list = list(wave_dict.keys())
-    aligned_wave_dict = {}
-    aligned_obspy = defaultdict(list)
+    # Path 
+    base_path = Path(config["seismic_data_path"]) if config else Path(".")
+    base_path.mkdir(parents=True, exist_ok=True)
+    filetitle = f"{filename}_aligned"
+    file_path = (base_path / filetitle).with_suffix(".mseed")
 
-    for (station, stream, angle) in zip(station_list, wave_dict.values(), misalignment_angle):
-        print(f"Processing {station}...")
-        st = Stream(stream)
-        st.sort(['channel'])
-        NS = find_channel(st, NS_channel) 
-        EW = find_channel(st, EW_channel) 
-        Z = find_channel(st, Z_channel)
+    # Read file if it exists
+    if file_path.exists():
+        if read_file == True:
+            print(f"Reading existing file: {file_path}")
+            stream = read(str(file_path))
+            aligned_obspy = defaultdict(list)
+            for tr in stream:
+                aligned_obspy[tr.stats.station].append(tr)
 
-        t_start = min(tr.stats.starttime for tr in st)
-        t_end   = max(tr.stats.endtime for tr in st)
-        fs = st[0].stats.sampling_rate
-        npts = int(round((t_end - t_start) * fs))
+    else:
+            
+        station_list = list(wave_dict.keys())
+        aligned_wave_dict = {}
+        aligned_obspy = defaultdict(list)
+        streams = []
 
-        # Make each channel a continuous data set by filling in the gaps with NaNs. 
-        # This ensures that the cross correlation and rotation are applied to the entire signal, even if there are gaps in the data.
-        E = np.full(npts, np.nan)
-        N = np.full(npts, np.nan)
-        Z_2 = np.full(npts, np.nan)
+        for (stat, stream, angle) in zip(station_list, wave_dict.values(), misalignment_angle):
+            print(f"Processing {stat}...")
+            st = Stream(stream)
+            st.sort(['channel'])
+            NS = find_channel(st, NS_channel) 
+            EW = find_channel(st, EW_channel) 
+            Z = find_channel(st, Z_channel)
 
-        for tr in EW:
-            i0 = int(round((tr.stats.starttime - t_start) * fs))
-            i1 = i0 + len(tr.data)
-            if i1 > npts:
-                i1 = npts
-                data = tr.data[:(i1 - i0)]
-            else:
-                data = tr.data
+            t_start = min(tr.stats.starttime for tr in st)
+            t_end   = max(tr.stats.endtime for tr in st)
+            fs = st[0].stats.sampling_rate
+            npts = int(round((t_end - t_start) * fs))
 
-            E[i0:i1] = data
+            # Make each channel a continuous data set by filling in the gaps with NaNs. 
+            # This ensures that the cross correlation and rotation are applied to the entire signal, even if there are gaps in the data.
+            E = np.full(npts, np.nan)
+            N = np.full(npts, np.nan)
+            Z_2 = np.full(npts, np.nan)
 
-        for tr in NS:
-            i0 = int(round((tr.stats.starttime - t_start) * fs))
-            i1 = i0 + len(tr.data)
-            if i1 > npts:
-                i1 = npts
-                data = tr.data[:(i1 - i0)]
-            else:
-                data = tr.data
+            for tr in EW:
+                i0 = int(round((tr.stats.starttime - t_start) * fs))
+                i1 = i0 + len(tr.data)
+                if i1 > npts:
+                    i1 = npts
+                    data = tr.data[:(i1 - i0)]
+                else:
+                    data = tr.data
 
-            N[i0:i1] = data
+                E[i0:i1] = data
 
-        for tr in Z:
-            i0 = int(round((tr.stats.starttime - t_start) * fs))
-            i1 = i0 + len(tr.data)
-            if i1 > npts:
-                i1 = npts
-                data = tr.data[:(i1 - i0)]
-            else:
-                data = tr.data
+            for tr in NS:
+                i0 = int(round((tr.stats.starttime - t_start) * fs))
+                i1 = i0 + len(tr.data)
+                if i1 > npts:
+                    i1 = npts
+                    data = tr.data[:(i1 - i0)]
+                else:
+                    data = tr.data
 
-            Z_2[i0:i1] = data
+                N[i0:i1] = data
 
-        n = min(len(N), len(E), len(Z_2)) 
-        y = N[:n] 
-        x = E[:n] 
-        z = Z_2[:n]
+            for tr in Z:
+                i0 = int(round((tr.stats.starttime - t_start) * fs))
+                i1 = i0 + len(tr.data)
+                if i1 > npts:
+                    i1 = npts
+                    data = tr.data[:(i1 - i0)]
+                else:
+                    data = tr.data
+
+                Z_2[i0:i1] = data
+
+            n = min(len(N), len(E), len(Z_2)) 
+            y = N[:n] 
+            x = E[:n] 
+            z = Z_2[:n]
 
 
-        scale = np.nanmax(np.sqrt((x**2)+(y**2)))
-        
-        x = x / scale
-        y = y / scale
+            scale = np.nanmax(np.sqrt((x**2)+(y**2)))
+            
+            x = x / scale
+            y = y / scale
 
-        S_k = x + 1j*y
-        S_k_aligned = S_k *np.exp(-1j * np.deg2rad(angle))
+            S_k = x + 1j*y
+            S_k_aligned = S_k *np.exp(-1j * np.deg2rad(angle))
 
-        x = np.real(S_k_aligned)
-        y = np.imag(S_k_aligned)
-        
-        #times = NS.times("timestamp")[:n]        
-        aligned_wave_dict[station] =  x, y, z, fs, t_start
+            x = np.real(S_k_aligned)
+            y = np.imag(S_k_aligned)
+            
+            #times = NS.times("timestamp")[:n]        
+            aligned_wave_dict[stat] =  x, y, z, fs, t_start
 
-        # Create new obspy stream with aligned data
-        st = Stream()
-        NS_name = NS[0].stats.channel if NS else None
-        EW_name = EW[0].stats.channel if EW else None
-        Z_name  = Z[0].stats.channel if Z else None
-        components = {EW_name: x, NS_name: y, Z_name: z}
-        if NS_name is None or EW_name is None or Z_name is None:
-            print(f"Skipping {station}. Missing channel")
-            continue
+            # Create new obspy stream with aligned data
+            st = Stream()
+            NS_name = NS[0].stats.channel if NS else None
+            EW_name = EW[0].stats.channel if EW else None
+            Z_name  = Z[0].stats.channel if Z else None
+            network_name = wave_dict[stat][0].stats.network 
+            station_name = wave_dict[stat][0].stats.station
 
-        for channel, data in components.items():
-            network_name, station_name, *_ = station.split('.')
-            tr = Trace(data=data)
-            tr.stats.network = network_name
-            tr.stats.station = station_name
-            tr.stats.channel = channel
-            tr.stats.starttime = UTC(t_start)
-            tr.stats.sampling_rate = fs
-            st.append(tr)
+            components = {EW_name: x, NS_name: y, Z_name: z}
+            if NS_name is None or EW_name is None or Z_name is None:
+                print(f"Skipping {stat}. Missing channel")
+                continue
 
-        aligned_obspy[station] = st
+            for channel, data in components.items():
+                tr = Trace(data=data)
+                tr.stats.network = network_name
+                tr.stats.station = station_name
+                tr.stats.channel = channel
+                tr.stats.starttime = UTC(t_start)
+                tr.stats.sampling_rate = fs
+                st.append(tr)
 
-    return aligned_wave_dict, aligned_obspy
+            streams.append(st)
+            aligned_obspy[stat] = st
+
+        # Save as mseed file
+        if save_mseed == True:
+            merged_stream = streams[0].copy() # Copy to avoid overwriting data
+            for st in streams[1:]:
+                merged_stream += st
+            merged_stream.merge()
+
+            merged_stream.write(f'{str(file_path)}', format="MSEED")
+
+    return aligned_obspy
 
 def preprocess(wave_dict, 
                window_type = "hann", 
@@ -720,7 +963,6 @@ def preprocess(wave_dict,
 
     return preprocessed_dict
       
-
 def ppsd(wave_dict, 
          metadata, 
          max_percentage=None,
