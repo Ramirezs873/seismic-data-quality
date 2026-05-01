@@ -199,13 +199,13 @@ def find_channel(stream, options):
     # If none are found
     return None 
 
-def select_time(wave_dict, 
-                t_start, 
-                duration,
+def select_time(wave_dict=None, 
+                t_start=None, 
+                duration=None,
                 save_mseed=False,
                 config=None,
                 read_file=True,
-                filename='default'):
+                filename='default_trim'):
     
     """
     Select a specific time window from seismic waveform data stored in a dictionary without altering the original.
@@ -233,8 +233,7 @@ def select_time(wave_dict,
     # Path 
     base_path = Path(config["seismic_data_path"]) if config else Path(".")
     base_path.mkdir(parents=True, exist_ok=True)
-    filetitle = f"{filename}_{duration}s_trim"
-    file_path = (base_path / filetitle).with_suffix(".mseed")
+    file_path = (base_path / filename).with_suffix(".mseed")
 
     # Read file if it exists
     if file_path.exists():
@@ -244,7 +243,9 @@ def select_time(wave_dict,
             new_dict = defaultdict(list)
             for tr in stream:
                 new_dict[tr.stats.station].append(tr)
-
+            
+            return new_dict
+        
     else:
         # Establish timespan
         t_end = t_start + duration
@@ -265,14 +266,16 @@ def select_time(wave_dict,
             merged_stream.merge()
 
             merged_stream.write(f'{str(file_path)}', format="MSEED")
+            print(f'Saved as {file_path}')
 
     return new_dict
 
-def demean_detrend(wave_dict,
+
+def demean_detrend(wave_dict = None,
                    save_mseed=False,
-                    config=None,
-                    read_file=True,
-                    filename='default'):
+                   config=None,
+                   read_file=True,
+                   filename='default_dd'):
     
     """
     Demean and detrend seismic waveform data stored in a dictionary without altering the original.
@@ -295,8 +298,7 @@ def demean_detrend(wave_dict,
     # Path 
     base_path = Path(config["seismic_data_path"]) if config else Path(".")
     base_path.mkdir(parents=True, exist_ok=True)
-    filetitle = f"{filename}_dnd"
-    file_path = (base_path / filetitle).with_suffix(".mseed")
+    file_path = (base_path / filename).with_suffix(".mseed")
 
     # Read file if it exists
     if file_path.exists():
@@ -326,10 +328,11 @@ def demean_detrend(wave_dict,
             merged_stream.merge()
 
             merged_stream.write(f'{str(file_path)}', format="MSEED")
-    
+            print(f'Saved as {file_path}')
+
     return new_dict
 
-def apply_window(wave_dict, 
+def apply_window(wave_dict = None, 
                  type = 'hann',
                  max_percentage = None,
                  max_length = 1, 
@@ -337,7 +340,7 @@ def apply_window(wave_dict,
                  save_mseed=False,
                  config=None,
                  read_file=True,
-                 filename='default'):
+                 filename='default_window'):
     
     """
     Apply a window function from seismic waveform data stored in a dictionary without altering the original.
@@ -371,8 +374,7 @@ def apply_window(wave_dict,
     # Path 
     base_path = Path(config["seismic_data_path"]) if config else Path(".")
     base_path.mkdir(parents=True, exist_ok=True)
-    filetitle = f"{filename}_{type}"
-    file_path = (base_path / filetitle).with_suffix(".mseed")
+    file_path = (base_path / filename).with_suffix(".mseed")
 
     # Read file if it exists
     if file_path.exists():
@@ -402,11 +404,12 @@ def apply_window(wave_dict,
             merged_stream.merge()
 
             merged_stream.write(f'{str(file_path)}', format="MSEED")
+            print(f'Saved as {file_path}')
 
     return new_dict
 
-def apply_filter(wave_dict, 
-                 filter_type, 
+def apply_filter(wave_dict = None, 
+                 filter_type = None, 
                  freqmin=None, 
                  freqmax=None, 
                  freq=None, 
@@ -415,7 +418,7 @@ def apply_filter(wave_dict,
                  save_mseed=False,
                  config=None,
                  read_file=True,
-                 filename='default'):
+                 filename='default_filter'):
 
     """
     Apply a filter to seismic waveform data stored in a dictionary without altering the original.
@@ -454,8 +457,7 @@ def apply_filter(wave_dict,
     # Path 
     base_path = Path(config["seismic_data_path"]) if config else Path(".")
     base_path.mkdir(parents=True, exist_ok=True)
-    filetitle = f"{filename}_{filter_type}"
-    file_path = (base_path / filetitle).with_suffix(".mseed")
+    file_path = (base_path / filename).with_suffix(".mseed")
 
     # Read file if it exists
     if file_path.exists():
@@ -503,6 +505,7 @@ def apply_filter(wave_dict,
             merged_stream.merge()
 
             merged_stream.write(f'{str(file_path)}', format="MSEED")
+            print(f'Saved as {file_path}')
 
     return filtered_dict
 
@@ -568,17 +571,17 @@ def amplitudes(wave_dict,
         
     return amplitudes
 
-def amplitude_correction(wave_dict,
-                         NS_channel,
-                         EW_channel,
-                         Z_channel,
-                         NS_correction_factor,
-                         EW_correction_factor,
-                         Z_correction_factor,
+def amplitude_correction(wave_dict=None,
+                         NS_channel=None,
+                         EW_channel=None,
+                         Z_channel=None,
+                         NS_correction_factor=None,
+                         EW_correction_factor=None,
+                         Z_correction_factor=None,
                          save_mseed=False,
                          config=None,
                          read_file=True,
-                         filename='default'):
+                         filename='default_amp_corr'):
     
     """
     Corrects the amplitude of a seismic waveform 
@@ -619,8 +622,7 @@ def amplitude_correction(wave_dict,
     # Path 
     base_path = Path(config["seismic_data_path"]) if config else Path(".")
     base_path.mkdir(parents=True, exist_ok=True)
-    filetitle = f"{filename}_amp_corr"
-    file_path = (base_path / filetitle).with_suffix(".mseed")
+    file_path = (base_path / filename).with_suffix(".mseed")
 
     # Read file if it exists
     if file_path.exists():
@@ -688,18 +690,19 @@ def amplitude_correction(wave_dict,
             merged_stream.merge()
 
             merged_stream.write(f'{str(file_path)}', format="MSEED")
-    
+            print(f'Saved as {file_path}')
+
     return amplitude_corrected_obspy
 
-def rotate_stream(wave_dict, 
-                  NS_channel, 
-                  EW_channel, 
-                  Z_channel,
-                  misalignment_angle,
+def rotate_stream(wave_dict = None, 
+                  NS_channel = None, 
+                  EW_channel = None, 
+                  Z_channel = None,
+                  misalignment_angle = None,
                   save_mseed=False,
                   config=None,
                   read_file=True,
-                  filename='default'):
+                  filename='default_rotate'):
     
     """
     Apply a complex transform to a seismic waveform to correct for rotation errors.
@@ -733,8 +736,7 @@ def rotate_stream(wave_dict,
     # Path 
     base_path = Path(config["seismic_data_path"]) if config else Path(".")
     base_path.mkdir(parents=True, exist_ok=True)
-    filetitle = f"{filename}_aligned"
-    file_path = (base_path / filetitle).with_suffix(".mseed")
+    file_path = (base_path / filename).with_suffix(".mseed")
 
     # Read file if it exists
     if file_path.exists():
@@ -857,6 +859,7 @@ def rotate_stream(wave_dict,
             merged_stream.merge()
 
             merged_stream.write(f'{str(file_path)}', format="MSEED")
+            print(f'Saved as {file_path}')
 
     return aligned_obspy
 
