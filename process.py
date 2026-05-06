@@ -644,6 +644,7 @@ def amplitude_correction(wave_dict=None,
                                                                         EW_correction_factor, 
                                                                         Z_correction_factor):
             print(f"Processing {stat}...")
+
             st = Stream(stream)
             st.sort(['channel'])
             NS = find_channel(st, NS_channel) 
@@ -811,11 +812,6 @@ def rotate_stream(wave_dict = None,
             x = E[:n] 
             z = Z_2[:n]
 
-
-            scale = np.nanmax(np.sqrt((x**2)+(y**2)))
-            
-            x = x / scale
-            y = y / scale
 
             S_k = x + 1j*y
             S_k_aligned = S_k *np.exp(-1j * np.deg2rad(angle))
