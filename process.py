@@ -740,13 +740,12 @@ def rotate_stream(wave_dict = None,
     file_path = (base_path / filename).with_suffix(".mseed")
 
     # Read file if it exists
-    if file_path.exists():
-        if read_file == True:
-            print(f"Reading existing file: {file_path}")
-            stream = read(str(file_path))
-            aligned_obspy = defaultdict(list)
-            for tr in stream:
-                aligned_obspy[tr.stats.station].append(tr)
+    if file_path.exists() and read_file == True:
+        print(f"Reading existing file: {file_path}")
+        stream = read(str(file_path))
+        aligned_obspy = defaultdict(list)
+        for tr in stream:
+            aligned_obspy[tr.stats.station].append(tr)
 
     else:
             
