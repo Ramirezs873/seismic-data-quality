@@ -512,7 +512,9 @@ def apply_filter(wave_dict = None,
 def amplitudes(wave_dict,
                NS_channel,
                EW_channel,
-               Z_channel):
+               Z_channel,
+               save_csv=False,
+               filename = 'filename'):
     """
     Calculates the maximum, mean and median amplitudes 
     of the NS and EW seismic components from a list of wave dictionaries.
@@ -566,8 +568,14 @@ def amplitudes(wave_dict,
                         "NS_median_amp": float(NS_median_amp),
                         "EW_median_amp": float(EW_median_amp),
                         "Z_median_amp": float(Z_median_amp)})
-        
-        print(f"Amplitudes for {station}: {amplitudes}")
+
+        if save_csv == True:
+            # Convert to DataFrame and save 
+            df = pd.DataFrame(amplitudes)
+            df.to_csv(f"{filename}.csv", index=False)
+
+            print(f"Saved to {filename}.csv")
+    
         
     return amplitudes
 
