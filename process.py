@@ -513,6 +513,7 @@ def amplitudes(wave_dict,
                NS_channel,
                EW_channel,
                Z_channel,
+               sensitivity = 2.994697576134245E8,
                save_csv=False,
                filename = 'filename'):
     """
@@ -532,6 +533,12 @@ def amplitudes(wave_dict,
             Possible channel codes for North-South instrument component.
         Z_channel (list of str):
             Possible channel codes for vertical instrument component.
+        sensitivity (float):
+            Seismic Intrusment Sensitivity. Check Instrument metadeta for the value.
+        save_csv (bool):
+            True/False. True to save as csv file.
+        filename (str):
+            Title of saved csv file. 
     """
 
     #Storage
@@ -545,18 +552,23 @@ def amplitudes(wave_dict,
         EW = find_channel(st, EW_channel) # Try to find EW channel from function input
         Z = find_channel(st, Z_channel)
 
+        # Adjust for Sensitivity, Convert to m/s
+        NS_v = NS[0].data / sensitivity
+        EW_v = EW[0].data / sensitivity
+        Z_v = Z[0].data / sensitivity
+
         # Max amplitude
-        NS_amp = np.max(np.abs(NS)) 
-        EW_amp = np.max(np.abs(EW))
-        Z_amp = np.max(np.abs(Z))   
+        NS_amp = np.max(np.abs(NS_v)) 
+        EW_amp = np.max(np.abs(EW_v))
+        Z_amp = np.max(np.abs(Z_v))   
         # Mean amplitude
-        NS_mean_amp = np.mean(np.abs(NS))
-        EW_mean_amp = np.mean(np.abs(EW))
-        Z_mean_amp = np.mean(np.abs(Z))
+        NS_mean_amp = np.mean(np.abs(NS_v))
+        EW_mean_amp = np.mean(np.abs(EW_v))
+        Z_mean_amp = np.mean(np.abs(Z_v))
         # Median amplitude
-        NS_median_amp = np.median(np.abs(NS))
-        EW_median_amp = np.median(np.abs(EW))
-        Z_median_amp = np.median(np.abs(Z))
+        NS_median_amp = np.median(np.abs(NS_v))
+        EW_median_amp = np.median(np.abs(EW_v))
+        Z_median_amp = np.median(np.abs(Z_v))
         # Store Values
         amplitudes.append({"station": station,
                         "NS_max_amp": float(NS_amp),
@@ -583,6 +595,7 @@ def amplitude_correction(wave_dict=None,
                          NS_channel=None,
                          EW_channel=None,
                          Z_channel=None,
+                         sensitivity = 2.994697576134245E8,
                          NS_correction_factor=None,
                          EW_correction_factor=None,
                          Z_correction_factor=None,
@@ -608,6 +621,8 @@ def amplitude_correction(wave_dict=None,
             Possible channel codes for North-South instrument component.
         Z_channel (list of str):
             Possible channel codes for vertical instrument component.
+        sensitivity (float):
+            Seismic Intrusment Sensitivity. Check Instrument metadeta for the value.
         NS_correction_factor (list of float):
             NS amplitude correction factor.
         EW_correction_factor (list of float):
@@ -662,9 +677,14 @@ def amplitude_correction(wave_dict=None,
             t_start = min(tr.stats.starttime for tr in st)
             fs = st[0].stats.sampling_rate
 
-            NS_corrected = NS[0].data * NS_correct if NS else None
-            EW_corrected = EW[0].data * EW_correct if EW else None
-            Z_corrected = Z[0].data * Z_correct if Z else None
+            # Adjust for Sensitivity, Convert to m/s
+            NS_v = NS[0].data / sensitivity
+            EW_v = EW[0].data / sensitivity
+            Z_v = Z[0].data / sensitivity
+
+            NS_corrected = NS_v * NS_correct if NS else None
+            EW_corrected = EW_v * EW_correct if EW else None
+            Z_corrected = Z_v * Z_correct if Z else None
 
             # Create new obspy stream with aligned data
             st = Stream()
