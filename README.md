@@ -43,6 +43,8 @@ This repository features three tutorial Jupyter Notebooks:
   * Worflow for correcting for seismometer amplitudes 
 * PPSD_Tutorial
   * Workflow for generating probabilistic power spectral density plots.
+* Event_Catalogue_Tutorial
+   * Workflow for creating event catalogues.    
 
 To use these tutorials, a config file needs to be set up. See below.
 
